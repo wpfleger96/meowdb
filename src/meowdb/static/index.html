@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MeowDB">
+  <title>MeowDB</title>
+
+  <link rel="manifest" href="/static/manifest.webmanifest">
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/layout.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/views.css">
+
+  <!-- Alpine.js — must load before app scripts so alpine:init fires first -->
+  <script src="/static/vendor/alpine.min.js" defer></script>
+
+  <!-- App scripts — load in dependency order, all deferred -->
+  <script src="/static/js/api.js" defer></script>
+  <script src="/static/js/audio.js" defer></script>
+  <script src="/static/js/waveform.js" defer></script>
+  <script src="/static/js/utils.js" defer></script>
+  <script src="/static/js/views/play.js" defer></script>
+  <script src="/static/js/views/library.js" defer></script>
+  <script src="/static/js/views/ingest.js" defer></script>
+  <script src="/static/js/views/stats.js" defer></script>
+  <!-- app.js last: registers Alpine.data() via alpine:init -->
+  <script src="/static/js/app.js" defer></script>
+</head>
+
+<body x-data="app()" x-init="init()">
+
+  <!-- Toast container (aria-live so screen readers announce messages) -->
+  <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- App shell -->
+  <div id="app">
+
+    <!-- ══════════════════════════════════════════════════
+         View: Play
+    ══════════════════════════════════════════════════ -->
+    <div
+      class="view-container no-scroll"
+      x-show="isView('play')"
+      x-data="playView()"
+      x-init="init()"
+    >
+      <div class="play-view">
+
+        <!-- Empty state (0 meows in library) -->
+        <div class="empty-state" x-show="meowCount === 0 && !isLoading">
+          <div class="empty-state-icon">🐱</div>
+          <div class="empty-state-title">No meows yet</div>
+          <div class="empty-state-body">Add your first meow to get started</div>
+          <button class="btn btn-primary" @click="goToUpload()">
+            Add your first meow
+          </button>
+        </div>
+
+        <!-- Main play area -->
+        <template x-if="meowCount > 0 || isLoading">
+          <div
+            class="flex flex-col items-center gap-4"
+            style="width:100%; max-width:360px;"
+          >
+            <!-- Giant MEOW button -->
+            <button
+              class="meow-btn"
+              :class="{ playing: isPlaying }"
+              @click="onMeowPress()"
+              :disabled="isLoading"
+              aria-label="Play a random meow"
+            >
+              <span class="meow-btn-label">MEOW</span>
+              <span class="meow-btn-sub" x-show="isLoading">loading…</span>
+              <span class="meow-btn-sub" x-show="isPlaying && !isLoading">tap to stop</span>
+            </button>
+
+            <!-- Mini waveform canvas (shown during + after playback) -->
+            <canvas
+              id="play-waveform"
+              x-ref="waveformCanvas"
+              class="play-waveform"
+              :class="{ visible: isPlaying || currentMeow }"
+              aria-hidden="true"
+            ></canvas>
+
+            <!-- Meow count -->
+            <p class="meow-counter" x-show="meowCount > 0">
+              <strong x-text="meowCount"></strong>
+              <span x-text="meowCount === 1 ? ' meow' : ' meows'"></span>
+              in library
+            </p>
+          </div>
+        </template>
+
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         View: Library
+    ══════════════════════════════════════════════════ -->
+    <div
+      class="view-container"
+      x-show="isView('library')"
+      x-data="libraryView()"
+      x-init="init()"
+    >
+      <div class="library-view">
+
+        <!-- Sticky header with sort dropdown -->
+        <div class="library-header view-header">
+          <h1 class="view-title">Library</h1>
+          <select
+            class="select"
+            x-model="sort"
+            @change="changeSort($event.target.value)"
+            aria-label="Sort order"
+          >
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="most_played">Most played</option>
+            <option value="duration_asc">Shortest</option>
+            <option value="duration_desc">Longest</option>
+          </select>
+        </div>
+
+        <!-- Label filter chips (horizontal scroll) -->
+        <div class="library-filters" x-show="allLabels.length > 0">
+          <template x-for="labelItem in allLabels" :key="labelItem.label">
+            <button
+              class="chip chip-filter"
+              :class="{ active: filterLabel === labelItem.label }"
+              @click="toggleLabelFilter(labelItem.label)"
+              x-text="labelItem.label + ' (' + labelItem.count + ')'"
+            ></button>
+          </template>
+        </div>
+
+        <!-- Loading state -->
+        <div class="upload-progress" x-show="isLoading">
+          <div class="spinner spinner-lg"></div>
+          <p class="text-secondary">Loading meows…</p>
+        </div>
+
+        <!-- Empty state -->
+        <div class="empty-state" x-show="!isLoading && meows.length === 0">
+          <div class="empty-state-icon">🎙️</div>
+          <div class="empty-state-title">
+            <span x-text="filterLabel ? 'No meows with this label' : 'Library is empty'"></span>
+          </div>
+          <div class="empty-state-body" x-show="!filterLabel">
+            Upload or record a meow to get started
+          </div>
+          <button
+            class="btn btn-primary"
+            x-show="!filterLabel"
+            @click="navigateTo('/upload')"
+          >
+            Add a meow
+          </button>
+        </div>
+
+        <!-- Meow list rows -->
+        <div class="library-list" x-show="!isLoading && meows.length > 0">
+          <template x-for="meow in meows" :key="meow.id">
+            <div class="list-row" @click="openDetail(meow)">
+              <!-- Play/pause icon button -->
+              <button
+                class="list-row-icon"
+                :class="{ playing: playingId === meow.id }"
+                @click.stop="togglePlay(meow, $event)"
+                :aria-label="playingId === meow.id ? 'Pause' : 'Play'"
+              >
+                <svg x-show="playingId !== meow.id" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+                <svg x-show="playingId === meow.id" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                </svg>
+              </button>
+
+              <!-- Row content -->
+              <div class="list-row-main">
+                <div class="list-row-title" x-text="'Meow ' + formatId(meow.id)"></div>
+                <div class="list-row-meta">
+                  <span class="badge badge-default" x-text="formatDuration(meow.duration_ms)"></span>
+                  <span x-text="formatDate(meow.created_at)"></span>
+                  <span x-show="meow.play_count > 0" x-text="meow.play_count + ' plays'"></span>
+                  <template x-for="label in (meow.labels || []).slice(0, 2)" :key="label">
+                    <span class="badge badge-accent" x-text="label"></span>
+                  </template>
+                </div>
+              </div>
+
+              <!-- Chevron -->
+              <svg class="meow-row-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m9 18 6-6-6-6"/>
+              </svg>
+            </div>
+          </template>
+
+          <!-- Load more -->
+          <div class="load-more-wrap" x-show="hasMore">
+            <button
+              class="btn btn-ghost"
+              @click="loadMore()"
+              :disabled="isLoadingMore"
+            >
+              <span x-show="!isLoadingMore">Load more</span>
+              <span x-show="isLoadingMore" class="flex items-center gap-2">
+                <span class="spinner"></span> Loading…
+              </span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ────────────────────────────────────────────────
+           Detail bottom-sheet modal
+      ──────────────────────────────────────────────── -->
+      <div
+        class="modal-backdrop"
+        x-show="showDetail"
+        @click.self="closeDetail()"
+        style="display:none"
+      >
+        <!-- Main detail sheet -->
+        <div class="modal-sheet" x-show="showDetail && !showDeleteConfirm">
+          <div class="modal-handle"></div>
+
+          <div class="modal-header">
+            <h2 class="modal-title" x-text="'Meow ' + formatId(detailMeow?.id || '')"></h2>
+            <button class="btn-icon" @click="closeDetail()" aria-label="Close">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M18 6 6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="modal-body" x-show="detailMeow">
+            <!-- WaveSurfer waveform (lazy-loaded) -->
+            <div class="detail-waveform">
+              <div id="wavesurfer-container" style="width:100%;height:80px;"></div>
+            </div>
+
+            <!-- Play button -->
+            <div class="flex justify-center" style="margin-bottom: var(--sp-4);">
+              <button class="btn btn-primary" @click="playDetailMeow()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+                Play
+              </button>
+            </div>
+
+            <!-- Metadata grid -->
+            <div class="detail-meta-grid">
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">Duration</span>
+                <span class="detail-meta-value" x-text="formatDuration(detailMeow?.duration_ms)"></span>
+              </div>
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">Added</span>
+                <span class="detail-meta-value" x-text="formatDate(detailMeow?.created_at)"></span>
+              </div>
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">Plays</span>
+                <span class="detail-meta-value" x-text="detailMeow?.play_count ?? 0"></span>
+              </div>
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">ID</span>
+                <span
+                  class="detail-meta-value"
+                  style="font-family:var(--font-mono);font-size:var(--text-sm);"
+                  x-text="formatId(detailMeow?.id || '')"
+                ></span>
+              </div>
+            </div>
+
+            <!-- Label editor -->
+            <div class="label-editor">
+              <div class="label-editor-title">Labels</div>
+              <div class="label-chips">
+                <template x-for="label in (detailMeow?.labels || [])" :key="label">
+                  <div class="chip">
+                    <span x-text="label"></span>
+                    <button class="chip-remove" @click="removeLabel(label)" aria-label="Remove label">×</button>
+                  </div>
+                </template>
+              </div>
+              <div class="label-add-form">
+                <input
+                  type="text"
+                  class="label-add-input"
+                  placeholder="Add label…"
+                  x-model="labelInput"
+                  @keydown.enter="addLabel()"
+                  maxlength="32"
+                >
+                <button
+                  class="btn btn-secondary"
+                  @click="addLabel()"
+                  style="height:36px;padding:0 12px;"
+                >Add</button>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Delete -->
+            <button class="btn btn-danger btn-full" @click="confirmDelete()">
+              Delete meow
+            </button>
+          </div>
+        </div>
+
+        <!-- Delete confirmation sheet -->
+        <div
+          class="modal-confirm"
+          x-show="showDeleteConfirm"
+          style="width:100%;display:flex;align-items:center;justify-content:center;padding:var(--sp-4);"
+        >
+          <div style="background:var(--bg-surface);border-radius:var(--radius-xl);padding:var(--sp-6);width:100%;max-width:340px;">
+            <h2 class="modal-title" style="margin-bottom:var(--sp-3);">Delete this meow?</h2>
+            <p class="text-secondary" style="margin-bottom:var(--sp-5);">
+              This cannot be undone. The audio files will be permanently deleted.
+            </p>
+            <div class="flex gap-3">
+              <button class="btn btn-ghost" style="flex:1;" @click="showDeleteConfirm = false">Cancel</button>
+              <button class="btn btn-danger" style="flex:1;" @click="deleteMeowConfirmed()">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         View: Upload / Ingest
+    ══════════════════════════════════════════════════ -->
+    <div
+      class="view-container"
+      x-show="isView('ingest')"
+      x-data="ingestView()"
+      x-init="init()"
+    >
+      <div class="ingest-view">
+
+        <div class="view-header">
+          <h1 class="view-title">Add Meows</h1>
+          <button
+            class="btn btn-ghost"
+            x-show="phase !== 'idle'"
+            @click="reset()"
+            style="height:36px;font-size:var(--text-sm);"
+          >
+            Start over
+          </button>
+        </div>
+
+        <!-- ── idle: upload UI ── -->
+        <div x-show="phase === 'idle'">
+          <!-- Drop zone -->
+          <div
+            class="upload-zone"
+            :class="{ 'drag-over': isDragOver }"
+            @click="$refs.fileInput.click()"
+            @dragover.prevent="onDragOver($event)"
+            @dragleave="onDragLeave()"
+            @drop.prevent="onDrop($event)"
+            role="button"
+            tabindex="0"
+            aria-label="Upload audio file"
+            @keydown.enter="$refs.fileInput.click()"
+            @keydown.space.prevent="$refs.fileInput.click()"
+          >
+            <div class="upload-zone-icon">🎵</div>
+            <div class="upload-zone-title">Upload a recording</div>
+            <div class="upload-zone-body">
+              Tap to choose a file, or drag and drop<br>
+              Supports .m4a, .mp3, .wav, and more
+            </div>
+            <button class="btn btn-primary" @click.stop="$refs.fileInput.click()">Choose file</button>
+          </div>
+          <input
+            type="file"
+            accept="audio/*"
+            x-ref="fileInput"
+            @change="onFileChange($event)"
+            style="display:none"
+            aria-hidden="true"
+          >
+
+          <!-- Divider -->
+          <div class="flex items-center gap-3" style="padding:0 var(--sp-4); margin: var(--sp-2) 0;">
+            <div class="divider" style="flex:1;margin:0;"></div>
+            <span class="text-muted text-sm">or</span>
+            <div class="divider" style="flex:1;margin:0;"></div>
+          </div>
+
+          <!-- Record section -->
+          <div class="record-section">
+            <button
+              class="record-btn"
+              :class="{ recording: isRecording }"
+              @click="isRecording ? stopRecording() : startRecording()"
+              :aria-label="isRecording ? 'Stop recording' : 'Start recording'"
+            >
+              <div class="record-btn-inner"></div>
+            </button>
+            <p class="text-sm text-secondary" x-show="!isRecording">Record now</p>
+            <p class="record-timer" x-show="isRecording" x-text="formatRecordTime(recordSeconds)"></p>
+            <p class="text-xs text-muted" x-show="isRecording">Tap again to stop</p>
+          </div>
+        </div>
+
+        <!-- ── uploading / processing ── -->
+        <div class="upload-progress" x-show="phase === 'uploading' || phase === 'processing'">
+          <div class="spinner spinner-lg"></div>
+          <p class="text-lg font-medium" x-text="statusMessage || 'Processing…'"></p>
+          <p class="text-sm text-secondary">This may take a few seconds</p>
+        </div>
+
+        <!-- ── review ── -->
+        <div class="review-container" x-show="phase === 'review'">
+
+          <!-- Progress -->
+          <div>
+            <div class="review-progress-bar">
+              <div
+                class="review-progress-fill"
+                :style="'width:' + (reviewProgress * 100) + '%'"
+              ></div>
+            </div>
+            <p class="review-progress-label" x-text="reviewLabel + ' reviewed'"></p>
+          </div>
+
+          <!-- Swipeable card area -->
+          <div class="review-card-wrap">
+            <div class="swipe-hint accept" id="hint-accept">KEEP</div>
+            <div class="swipe-hint reject" id="hint-reject">SKIP</div>
+
+            <div
+              class="review-card"
+              id="review-card"
+              x-show="currentSegment"
+              @touchstart.passive="onTouchStart($event)"
+              @touchmove="onTouchMove($event)"
+              @touchend.passive="onTouchEnd()"
+            >
+              <canvas class="review-card-waveform" id="review-waveform" aria-hidden="true"></canvas>
+
+              <div class="review-card-body">
+                <div class="review-card-meta">
+                  <span class="badge badge-default" x-text="formatDuration(currentSegment?.duration_ms)"></span>
+                  <button
+                    class="btn-icon"
+                    @click="playCurrentSegment()"
+                    aria-label="Play this segment"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="review-actions">
+                  <button class="btn btn-danger" @click="rejectCurrent()">Skip</button>
+                  <button class="btn btn-success" @click="acceptCurrent()">Keep</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm text-muted text-center">Swipe right to keep, left to skip</p>
+        </div>
+
+        <!-- ── summary ── -->
+        <div class="review-summary" x-show="phase === 'summary'">
+          <p class="text-xl font-bold">Review complete</p>
+
+          <div class="review-summary-counts">
+            <div class="review-summary-count">
+              <span class="review-summary-num green" x-text="acceptedCount"></span>
+              <span class="review-summary-label">to save</span>
+            </div>
+            <div class="review-summary-count">
+              <span class="review-summary-num red" x-text="rejectedCount"></span>
+              <span class="review-summary-label">skipped</span>
+            </div>
+          </div>
+
+          <template x-if="acceptedCount > 0">
+            <button class="btn btn-primary btn-full" @click="commitJob()">
+              Save
+              <span x-text="acceptedCount"></span>
+              <span x-text="acceptedCount === 1 ? ' meow' : ' meows'"></span>
+            </button>
+          </template>
+          <template x-if="acceptedCount === 0">
+            <p class="text-secondary">Nothing to save — all segments were skipped.</p>
+          </template>
+
+          <button class="btn btn-ghost" @click="reset()">Start over</button>
+        </div>
+
+        <!-- ── done ── -->
+        <div class="empty-state" x-show="phase === 'done'">
+          <div class="empty-state-icon">🐱</div>
+          <div class="empty-state-title">Meows saved!</div>
+          <div class="empty-state-body">They're now in your library.</div>
+          <button class="btn btn-primary" @click="navigateTo('/library')">Go to library</button>
+          <button class="btn btn-ghost" @click="reset()">Add more</button>
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         View: Stats
+    ══════════════════════════════════════════════════ -->
+    <div
+      class="view-container"
+      x-show="isView('stats')"
+      x-data="statsView()"
+      x-init="init()"
+    >
+      <div class="stats-view">
+
+        <div class="view-header" style="position:static;border-bottom:none;padding-bottom:0;">
+          <h1 class="view-title">Stats</h1>
+          <button class="btn-icon" @click="load()" aria-label="Refresh stats">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
+              <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Loading -->
+        <div class="upload-progress" x-show="isLoading">
+          <div class="spinner spinner-lg"></div>
+        </div>
+
+        <!-- Stats content -->
+        <template x-if="!isLoading && stats">
+          <div class="flex flex-col gap-5" style="padding-top: var(--sp-4);">
+
+            <!-- 2×2 stat tile grid -->
+            <div class="stats-grid">
+              <div class="stat-tile">
+                <div class="stat-tile-label">Total meows</div>
+                <div class="stat-tile-value" x-text="stats.total_meows"></div>
+              </div>
+              <div class="stat-tile">
+                <div class="stat-tile-label">Total duration</div>
+                <div class="stat-tile-value" x-text="totalDurationFormatted"></div>
+              </div>
+              <div class="stat-tile">
+                <div class="stat-tile-label">Avg duration</div>
+                <div class="stat-tile-value" x-text="avgDurationFormatted"></div>
+              </div>
+              <div class="stat-tile">
+                <div class="stat-tile-label">First meow</div>
+                <div class="stat-tile-value" style="font-size:var(--text-lg);" x-text="firstMeowDate"></div>
+              </div>
+            </div>
+
+            <!-- Most played leaderboard -->
+            <div class="stats-section" x-show="stats.most_played && stats.most_played.length > 0">
+              <div class="stats-section-header">Most played</div>
+              <template x-for="(meow, index) in stats.most_played" :key="meow.id">
+                <div class="leaderboard-item" @click="playLeaderboardMeow(meow)">
+                  <div class="leaderboard-rank" :class="{ top: index === 0 }" x-text="index + 1"></div>
+                  <div class="leaderboard-main">
+                    <div class="leaderboard-id" x-text="formatId(meow.id)"></div>
+                    <div class="leaderboard-duration" x-text="formatDuration(meow.duration_ms)"></div>
+                  </div>
+                  <div class="leaderboard-plays" x-text="meow.play_count + ' plays'"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Recent additions -->
+            <div class="stats-section" x-show="stats.recent && stats.recent.length > 0">
+              <div class="stats-section-header">Recent additions</div>
+              <template x-for="meow in stats.recent" :key="meow.id">
+                <div class="leaderboard-item" @click="playLeaderboardMeow(meow)">
+                  <div
+                    style="width:32px;height:32px;border-radius:50%;background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;flex-shrink:0;"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  </div>
+                  <div class="leaderboard-main">
+                    <div class="leaderboard-id" x-text="formatId(meow.id)"></div>
+                    <div class="leaderboard-duration" x-text="formatDate(meow.created_at)"></div>
+                  </div>
+                  <div class="leaderboard-duration" x-text="formatDuration(meow.duration_ms)"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Empty library -->
+            <div class="empty-state" x-show="stats.total_meows === 0">
+              <div class="empty-state-icon">📊</div>
+              <div class="empty-state-title">No data yet</div>
+              <div class="empty-state-body">Add some meows to see your stats</div>
+            </div>
+
+          </div>
+        </template>
+
+        <!-- Error state -->
+        <div class="empty-state" x-show="!isLoading && error">
+          <div class="empty-state-icon">⚠️</div>
+          <div class="empty-state-title">Failed to load</div>
+          <div class="empty-state-body" x-text="error"></div>
+          <button class="btn btn-primary" @click="load()">Retry</button>
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         Bottom navigation bar
+    ══════════════════════════════════════════════════ -->
+    <nav class="bottom-nav" role="navigation" aria-label="Main navigation">
+
+      <!-- Play tab -->
+      <button
+        :class="navClass('play')"
+        @click="goTo('/')"
+        aria-label="Play"
+        :aria-current="isView('play') ? 'page' : null"
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="8" cy="7" r="2"/>
+          <circle cx="12" cy="5" r="2"/>
+          <circle cx="16" cy="7" r="2"/>
+          <circle cx="6" cy="11" r="1.5"/>
+          <path d="M12 22c-4 0-7-2-7-6 0-2 1.5-3.5 3-4.5C9 10.5 10.5 10 12 10s3 .5 4 1.5c1.5 1 3 2.5 3 4.5 0 4-3 6-7 6z"/>
+        </svg>
+        <span class="nav-tab-label">Play</span>
+      </button>
+
+      <!-- Library tab -->
+      <button
+        :class="navClass('library')"
+        @click="goTo('/library')"
+        aria-label="Library"
+        :aria-current="isView('library') ? 'page' : null"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+        </svg>
+        <span class="nav-tab-label">Library</span>
+      </button>
+
+      <!-- Upload tab -->
+      <button
+        :class="navClass('ingest')"
+        @click="goTo('/upload')"
+        aria-label="Upload"
+        :aria-current="isView('ingest') ? 'page' : null"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <span class="nav-tab-label">Upload</span>
+      </button>
+
+      <!-- Stats tab -->
+      <button
+        :class="navClass('stats')"
+        @click="goTo('/stats')"
+        aria-label="Stats"
+        :aria-current="isView('stats') ? 'page' : null"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span class="nav-tab-label">Stats</span>
+      </button>
+
+    </nav>
+
+  </div><!-- /#app -->
+
+  <!-- Service worker registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+      });
+    }
+  </script>
+
+</body>
+</html>
