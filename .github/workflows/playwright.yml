@@ -1,4 +1,4 @@
-name: Screenshots
+name: Playwright
 
 on:
   pull_request:
@@ -6,12 +6,11 @@ on:
       - main
 
 concurrency:
-  group: screenshots-${{ github.ref }}
+  group: playwright-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   screenshots:
@@ -59,8 +58,12 @@ jobs:
         env:
           CI: "true"
 
-      - name: Post screenshots to PR
-        if: always() && github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/post-screenshots.sh "${{ github.event.pull_request.number }}" ui/screenshots
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            ui/test-results/
+            ui/playwright-report/
+          retention-days: 7

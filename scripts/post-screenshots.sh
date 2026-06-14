@@ -54,13 +54,13 @@ fi
 COMMIT=$(git commit-tree "$TREE" "${PARENT_ARGS[@]}" -m "screenshots: PR #${PR}")
 git push --force-with-lease origin "${COMMIT}:refs/heads/${BRANCH}"
 
-RAW_BASE="https://raw.githubusercontent.com/${REPO}/${COMMIT}"
+BLOB_BASE="https://github.com/${REPO}/blob/${BRANCH}"
 
 declare -A IMAGE_URL_MAP
 IMAGE_URLS=()
 for i in "${!PNGS[@]}"; do
   ORIG_NAME="$(basename "${PNGS[$i]}" .png)"
-  URL="${RAW_BASE}/${TREE_PATHS[$i]}"
+  URL="${BLOB_BASE}/${TREE_PATHS[$i]}?raw=true"
   IMAGE_URLS+=("$URL")
   IMAGE_URL_MAP["$ORIG_NAME"]="$URL"
 done
