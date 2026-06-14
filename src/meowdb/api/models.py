@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+
+class MeowResponse(BaseModel):
+    id: str
+    timestamp: str
+    duration_ms: int
+    labels: list[str]
+    play_count: int
+    created_at: str
+    wav_url: str | None = None
+    mp3_url: str | None = None
+
+
+class MeowListResponse(BaseModel):
+    items: list[MeowResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class UpdateLabelsRequest(BaseModel):
+    labels: list[str]
+
+
+class IngestSegmentResponse(BaseModel):
+    id: str
+    index: int
+    duration_ms: int
+    url: str
+    waveform: list[float]
+    status: str
+
+
+class IngestJobResponse(BaseModel):
+    job_id: str
+    status: str
+    segments: list[IngestSegmentResponse] | None = None
+    source_filename: str | None = None
+    error: str | None = None
+
+
+class CommitRequest(BaseModel):
+    accepted_ids: list[str]
+    rejected_ids: list[str]
+
+
+class CommitResponse(BaseModel):
+    meow_ids: list[str]
+    rejected_count: int
+
+
+class StatsResponse(BaseModel):
+    total_meows: int
+    total_duration_ms: int
+    avg_duration_ms: float
+    most_played: list[dict]  # type: ignore[type-arg]
+    recent: list[dict]  # type: ignore[type-arg]
+    label_counts: dict[str, int]
+
+
+class LabelResponse(BaseModel):
+    label: str
+    count: int

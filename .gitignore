@@ -217,4 +217,11 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Claude Code worktrees
 .claude/worktrees/
+
+# MeowDB data
+data/
+*.m4a
+*.wav
+*.mp3
