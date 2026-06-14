@@ -17,9 +17,6 @@
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/views.css">
 
-  <!-- Alpine.js — must load before app scripts so alpine:init fires first -->
-  <script src="/static/vendor/alpine.min.js" defer></script>
-
   <!-- App scripts — load in dependency order, all deferred -->
   <script src="/static/js/api.js" defer></script>
   <script src="/static/js/audio.js" defer></script>
@@ -29,8 +26,9 @@
   <script src="/static/js/views/library.js" defer></script>
   <script src="/static/js/views/ingest.js" defer></script>
   <script src="/static/js/views/stats.js" defer></script>
-  <!-- app.js last: registers Alpine.data() via alpine:init -->
   <script src="/static/js/app.js" defer></script>
+  <!-- Alpine.js LAST — auto-starts on load, so all components must be defined first -->
+  <script src="/static/vendor/alpine.min.js" defer></script>
 </head>
 
 <body x-data="app()" x-init="init()">

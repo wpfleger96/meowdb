@@ -1,0 +1,12 @@
+{
+  "name": "meowdb-ui",
+  "version": "1.0.0",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
+  },
+  "scripts": {
+    "test:e2e": "playwright test --project=e2e",
+    "test:screenshots": "SCREENSHOTS=true playwright test --project=screenshots --project=screenshots-mobile"
+  }
+}

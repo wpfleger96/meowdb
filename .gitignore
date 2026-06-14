@@ -225,3 +225,9 @@ data/
 *.m4a
 *.wav
 *.mp3
+
+# Playwright
+ui/node_modules/
+ui/screenshots/
+ui/test-results/
+ui/playwright-report/
