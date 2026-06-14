@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import struct
 import wave
+
 from pathlib import Path
 
 from meowdb.db import MeowDB
@@ -106,7 +107,8 @@ def main() -> None:
                 }
             )
 
-            for _ in range(meow["plays"]):
+            play_count: int = meow["plays"]  # type: ignore[assignment]
+            for _ in range(play_count):
                 db.increment_play_count(meow_id)
     finally:
         db.close()

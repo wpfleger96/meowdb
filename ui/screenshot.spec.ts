@@ -17,29 +17,29 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string): Promise
   });
 }
 
-async function waitForAlpine(page: Page): Promise<void> {
+async function waitForApp(page: Page): Promise<void> {
   await page.waitForFunction(() => typeof (window as any).Alpine !== 'undefined');
-  await page.waitForTimeout(500);
+  await page.waitForLoadState('networkidle');
 }
 
 test.describe('MeowDB screenshots', () => {
   test('play view', async ({ page }, testInfo) => {
     await page.goto('/');
-    await waitForAlpine(page);
+    await waitForApp(page);
     await page.waitForSelector('.meow-btn', { state: 'visible' });
     await screenshot(page, testInfo, '01-play.png');
   });
 
   test('library list', async ({ page }, testInfo) => {
     await page.goto('/library');
-    await waitForAlpine(page);
+    await waitForApp(page);
     await page.waitForSelector('.list-row', { state: 'visible' });
     await screenshot(page, testInfo, '02-library.png');
   });
 
   test('library detail', async ({ page }, testInfo) => {
     await page.goto('/library');
-    await waitForAlpine(page);
+    await waitForApp(page);
     await page.waitForSelector('.list-row', { state: 'visible' });
     await page.locator('.list-row').first().click();
     await page.waitForSelector('.modal-sheet', { state: 'visible' });
@@ -49,14 +49,14 @@ test.describe('MeowDB screenshots', () => {
 
   test('ingest upload', async ({ page }, testInfo) => {
     await page.goto('/upload');
-    await waitForAlpine(page);
+    await waitForApp(page);
     await page.waitForSelector('.upload-zone', { state: 'visible' });
     await screenshot(page, testInfo, '04-ingest.png');
   });
 
   test('stats dashboard', async ({ page }, testInfo) => {
     await page.goto('/stats');
-    await waitForAlpine(page);
+    await waitForApp(page);
     await page.waitForSelector('.stat-tile', { state: 'visible' });
     await screenshot(page, testInfo, '05-stats.png');
   });
