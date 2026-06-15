@@ -22,3 +22,7 @@ CORS_ORIGINS: list[str] = [
     for o in os.environ.get("MEOWDB_CORS_ORIGINS", _default_origins).split(",")
     if o.strip()
 ]
+
+PASSWORD_HASH: str = os.environ.get("MEOWDB_PASSWORD_HASH", "")
+SESSION_SECRET: str = os.environ.get("MEOWDB_SESSION_SECRET", "local-dev-secret-not-for-production")
+AUTH_DISABLED: bool = os.environ.get("MEOWDB_AUTH_DISABLED", "").lower() in ("1", "true", "yes")

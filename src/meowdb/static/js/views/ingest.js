@@ -73,6 +73,10 @@ function ingestView() {
 
     async _uploadFile(file) {
       if (this._resetting) return;
+      if (!this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
       this.phase = 'uploading';
       this.statusMessage = 'Uploading…';
       try {
@@ -92,6 +96,10 @@ function ingestView() {
     ────────────────────────────────────────────────────── */
 
     async startRecording() {
+      if (!this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
       try {
         this.isRecording = true;
         this.recordSeconds = 0;

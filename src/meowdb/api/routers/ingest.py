@@ -7,10 +7,11 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
+from meowdb.api.auth import require_auth
 from meowdb.api.models import (
     ClipRequest,
     CommitRequest,
@@ -23,7 +24,7 @@ from meowdb.api.models import (
 from meowdb.api.streaming import safe_path, stream_file
 from meowdb.config import MP3_DIR, STAGING_DIR, WAV_DIR
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024

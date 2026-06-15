@@ -10,9 +10,20 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
+from meowdb.api import auth
 from meowdb.api.routers import audio, ingest, meows, stats
-from meowdb.config import CORS_ORIGINS, DATA_DIR, DB_PATH, MP3_DIR, STAGING_DIR, WAV_DIR
+from meowdb.config import (
+    CORS_ORIGINS,
+    DATA_DIR,
+    DB_PATH,
+    HOST,
+    MP3_DIR,
+    SESSION_SECRET,
+    STAGING_DIR,
+    WAV_DIR,
+)
 
 _STATIC_DIR = Path(__file__).parent.parent / "static"
 _INDEX_HTML = _STATIC_DIR / "index.html"
@@ -47,9 +58,17 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=SESSION_SECRET,
+        max_age=14 * 24 * 3600,
+        https_only=HOST != "127.0.0.1",
+        same_site="lax",
+    )
 
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
+    app.include_router(auth.router, prefix="/api")
     app.include_router(meows.router, prefix="/api")
     app.include_router(ingest.router, prefix="/api")
     app.include_router(audio.router, prefix="/api")

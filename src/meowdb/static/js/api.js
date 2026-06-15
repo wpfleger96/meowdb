@@ -216,3 +216,33 @@ async function getStats() {
 async function getLabels() {
   return apiFetch('/labels');
 }
+
+/* ============================================================
+   Auth
+   ============================================================ */
+
+/**
+ * @returns {Promise<{ authenticated: boolean }>}
+ */
+async function getAuthStatus() {
+  return apiFetch('/auth/status');
+}
+
+/**
+ * @param {string} password
+ * @returns {Promise<{ status: string }>}
+ */
+async function login(password) {
+  return apiFetch('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+}
+
+/**
+ * @returns {Promise<{ status: string }>}
+ */
+async function logout() {
+  return apiFetch('/auth/logout', { method: 'POST' });
+}
