@@ -10,9 +10,10 @@ RUN mkdir -p /data && chown meowdb:meowdb /data
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv sync --system --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project
 COPY src/ ./src/
-RUN uv sync --system --frozen --no-dev --no-editable
+RUN uv sync --frozen --no-dev --no-editable
+ENV PATH="/app/.venv/bin:$PATH"
 
 USER meowdb
 ENV MEOWDB_DATA_DIR=/data MEOWDB_HOST=0.0.0.0 MEOWDB_PORT=8000
