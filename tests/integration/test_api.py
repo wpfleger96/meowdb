@@ -502,3 +502,4 @@ def test_health_returns_503_when_db_unreachable(client):
     with patch("meowdb.db.MeowDB.ping", return_value=False):
         resp = client.get("/health")
     assert resp.status_code == 503
+    assert resp.json() == {"status": "error"}

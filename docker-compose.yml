@@ -5,8 +5,6 @@ services:
       - "8000:8000"
     volumes:
       - meowdb-data:/data
-    environment:
-      MEOWDB_DATA_DIR: /data
 
 volumes:
   meowdb-data:
