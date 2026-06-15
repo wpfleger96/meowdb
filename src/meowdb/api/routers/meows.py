@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from meowdb.api.models import MeowListResponse, MeowResponse, UpdateLabelsRequest, UpdateMeowRequest
+from meowdb.api.models import MeowListResponse, MeowResponse, UpdateMeowRequest
 from meowdb.api.streaming import safe_path
 from meowdb.config import MP3_DIR, WAV_DIR
 
