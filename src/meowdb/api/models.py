@@ -72,3 +72,21 @@ class StatsResponse(BaseModel):
 class LabelResponse(BaseModel):
     label: str
     count: int
+
+
+class ClipRegion(BaseModel):
+    start_ms: int
+    end_ms: int
+
+
+class ClipRequest(BaseModel):
+    regions: list[ClipRegion]
+
+
+class DetectRegion(BaseModel):
+    start_ms: int
+    end_ms: int
+
+
+class DetectResponse(BaseModel):
+    regions: list[DetectRegion]

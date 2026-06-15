@@ -147,6 +147,38 @@ function segmentAudioUrl(jobId, segmentId) {
   return `${API_BASE}/ingest/${jobId}/audio/${segmentId}`;
 }
 
+/**
+ * Build the streaming URL for the source audio of an ingest job.
+ * @param {string} jobId
+ * @returns {string}
+ */
+function sourceAudioUrl(jobId) {
+  return `${API_BASE}/ingest/${jobId}/source`;
+}
+
+/**
+ * Trigger auto-detection of meow regions in the source audio.
+ * @param {string} jobId
+ * @returns {Promise<{ regions: Array<{ start_ms: number, end_ms: number }> }>}
+ */
+async function detectRegions(jobId) {
+  return apiFetch(`/ingest/${jobId}/detect`, { method: 'POST' });
+}
+
+/**
+ * Clip the source audio at the given regions and commit to the library.
+ * @param {string} jobId
+ * @param {Array<{ start_ms: number, end_ms: number }>} regions
+ * @returns {Promise<{ meow_ids: string[] }>}
+ */
+async function clipAndCommit(jobId, regions) {
+  return apiFetch(`/ingest/${jobId}/clip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ regions }),
+  });
+}
+
 /* ============================================================
    Stats & Labels
    ============================================================ */

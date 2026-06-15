@@ -101,6 +101,44 @@ class MeowProcessor:
             waveform_data=waveform,
         )
 
+    def detect_only(self, path: Path) -> list[tuple[int, int]]:
+        audio, samples, sr = self._load(path)
+        cat_band, low_band = self._build_discriminator_signals(samples, sr)
+        candidates = self._detect_segments(cat_band, sr)
+        classified = self._classify_segments(candidates, cat_band, low_band)
+        padded = self._apply_padding(classified, len(samples), sr)
+        return [(int(s / sr * 1000), int(e / sr * 1000)) for s, e, _ in padded]
+
+    def process_clips(
+        self, path: Path, regions: list[tuple[int, int]], staging_dir: Path
+    ) -> list[MeowSegment]:
+        audio, samples, sr = self._load(path)
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        segments: list[MeowSegment] = []
+        for i, (start_ms, end_ms) in enumerate(regions):
+            slice_audio = audio[start_ms:end_ms]
+            processed = self._process_segment(slice_audio)
+            peak_dbfs = float(processed.dBFS)
+            stem = f"clip_{i:03d}"
+            wav_path, mp3_path = self._export_segment(processed, staging_dir, stem)
+            waveform = self._compute_waveform(processed)
+            duration_ms = len(processed)
+            segments.append(
+                MeowSegment(
+                    index=i,
+                    source_path=path,
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                    duration_ms=duration_ms,
+                    cat_energy_ratio=0.0,
+                    peak_dbfs=peak_dbfs,
+                    wav_path=wav_path,
+                    mp3_path=mp3_path,
+                    waveform_data=waveform,
+                )
+            )
+        return segments
+
     def _load(self, path: Path) -> tuple[AudioSegment, np.ndarray, int]:
         audio = AudioSegment.from_file(str(path))
         audio = audio.set_channels(1)
@@ -317,6 +355,8 @@ class MeowProcessor:
 
     def _compute_waveform(self, audio: AudioSegment) -> list[float]:
         samples = self._audio_to_numpy(audio)
+        if len(samples) == 0:
+            return [0.0]
         sr = audio.frame_rate
         # ~100 samples/sec
         hop = max(1, sr // 100)
