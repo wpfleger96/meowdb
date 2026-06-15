@@ -4,46 +4,46 @@
 # Settings
 set dotenv-load := false
 
-# Run quick quality checks (no tests)
+# Quick checks: sync, type-check, lint-check, format-check (no tests)
 default: sync type-check lint-check format-check
 
-# Install and sync project dependencies
+# Install and sync project dependencies with uv
 sync:
     uv sync
 
-# Run mypy static type checking
+# Check types with mypy
 type-check:
     uv run mypy .
 
-# Check for lint issues without fixing
+# Check for lint issues (without fixing) with ruff
 lint-check:
     uvx ruff check .
 
-# Check formatting without making changes
+# Check code formatting (without fixing) with ruff
 format-check:
     uvx ruff format . --check
 
-# Auto-fix lint issues with ruff
+# Fix lint issues with ruff
 lint:
     uvx ruff check . --fix
 
-# Auto-format source files with ruff
+# Auto-format code with ruff
 format:
     uvx ruff format .
 
-# Sync deps then run type, lint, and format checks
+# Run quality checks: sync, type-check, lint-check, format-check
 check: sync type-check lint-check format-check
     @echo "Quick quality checks passed"
 
-# Run all quality checks and tests
+# Run all quality checks (check) and unit+integration tests
 check-all: check test
     @echo "All quality checks and tests passed"
 
-# Full pre-commit gate: sync, type-check, lint, format, test
+# Pre-commit gate: sync, type-check, lint, format, and all tests
 pre-commit: sync type-check lint format test
     @echo "Pre-commit checks passed"
 
-# Run all tests except e2e
+# Run all unit and integration tests (excludes e2e)
 test:
     uv run pytest -m "not e2e"
 
@@ -63,22 +63,22 @@ test-e2e:
 test-all:
     uv run pytest --no-cov
 
-# Build the distribution package
+# Build distribution package (after syncing deps)
 build: sync
     uv build
 
-# Remove dist/, build/, and egg-info artifacts
+# Remove dist/, build/, and *.egg-info artifacts
 clean-build:
     rm -rf dist/ build/ src/*.egg-info
 
-# Clean then rebuild the distribution package
+# Clean build artifacts and rebuild the distribution package
 rebuild: clean-build build
 
-# Run CI checks: sync, type-check, lint-check, format-check, test
+# CI gate: sync, type-check, lint-check, format-check, and tests
 ci: sync type-check lint-check format-check test
     @echo "CI checks passed"
 
-# Start dev server with password auth enabled (password: test)
+# Start dev server with password auth (password: test, secret: dev-secret)
 dev-auth:
     #!/usr/bin/env bash
     set -euo pipefail
