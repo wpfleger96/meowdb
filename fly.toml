@@ -1,28 +1,33 @@
-app = "meowdb"
-primary_region = "sea"
+# fly.toml app configuration file generated for meowdb on 2026-06-15T17:33:39-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'meowdb'
+primary_region = 'sjc'
 
 [build]
+
+[[mounts]]
+  source = 'meowdb_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
-[mounts]
-  source = "meowdb_data"
-  destination = "/data"
+[checks]
+  [checks.health]
+    port = 8000
+    type = 'http'
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '15s'
+    path = '/health'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
-
-[[checks]]
-  name = "health"
-  type = "http"
-  port = 8000
-  path = "/health"
-  interval = "15s"
-  timeout = "5s"
-  grace_period = "15s"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
