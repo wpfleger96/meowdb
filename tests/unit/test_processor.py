@@ -142,7 +142,7 @@ class TestClassification:
         samples = processor._audio_to_numpy(audio)
         cat_band, low_band = processor._build_discriminator_signals(samples, audio.frame_rate)
         candidates = [(0, len(samples))]
-        classified = processor._classify_segments(candidates, cat_band, low_band)
+        classified = processor._classify_segments(candidates, cat_band, low_band, audio.frame_rate)
         assert len(classified) == 1
         assert classified[0][2] >= 1.2  # ratio field
 
@@ -153,7 +153,7 @@ class TestClassification:
         samples = processor._audio_to_numpy(audio)
         cat_band, low_band = processor._build_discriminator_signals(samples, audio.frame_rate)
         candidates = [(0, len(samples))]
-        classified = processor._classify_segments(candidates, cat_band, low_band)
+        classified = processor._classify_segments(candidates, cat_band, low_band, audio.frame_rate)
         assert len(classified) == 0
 
 
@@ -162,9 +162,9 @@ class TestPadding:
     def test_expands_segment_by_pad(self):
         processor = MeowProcessor()
         sr = 44100
-        # pre_pad_ms=150, post_pad_ms=150
-        pre = int(0.150 * sr)
-        post = int(0.150 * sr)
+        # pre_pad_ms=200, post_pad_ms=200
+        pre = int(0.200 * sr)
+        post = int(0.200 * sr)
         total = sr * 3  # 3 seconds
         segments = [(sr, sr * 2, 1.5)]  # 1s to 2s
         padded = processor._apply_padding(segments, total, sr)
@@ -297,3 +297,147 @@ class TestProcessFile:
         result = processor.process_file(wav_path, staging_dir=tmp_path)
 
         assert result.elapsed_seconds > 0
+
+
+@pytest.mark.unit
+class TestAdaptiveThreshold:
+    def test_detects_quiet_signal_missed_by_fixed_threshold(self):
+        """Adaptive threshold detects a quiet meow that a fixed -40dBFS threshold misses.
+
+        The recording has 5s of background noise at ~-78dBFS in the cat band. The P30
+        of active frames falls in the noise floor, driving the adaptive threshold to the
+        -52dBFS floor. The meow's ~-47dBFS RMS is above that floor but below the fixed
+        -40dBFS threshold, so only adaptive detection catches it.
+        """
+        sr = 44100
+        processor = MeowProcessor()
+        # 5s recording: meow is only 8% of frames so P30 stays in the noise floor
+        n_total = int(sr * 5.0)
+
+        rng = np.random.default_rng(42)
+        samples = (rng.standard_normal(n_total) * 0.0002).astype(np.float32)
+
+        # 800Hz burst at amplitude 0.006 (~-47dBFS RMS) from 2.0s to 2.4s
+        meow_start = int(sr * 2.0)
+        meow_end = int(sr * 2.4)
+        t = np.arange(meow_end - meow_start) / sr
+        samples[meow_start:meow_end] += (0.006 * np.sin(2 * np.pi * 800 * t)).astype(np.float32)
+
+        cat_band, _ = processor._build_discriminator_signals(samples, sr)
+
+        # Fixed threshold (-40dBFS) must miss the meow (meow RMS ~ -47dBFS < -40)
+        from meowdb.models import ProcessorConfig, SegmentationConfig
+        fixed_proc = MeowProcessor(
+            config=ProcessorConfig(segmentation=SegmentationConfig(adaptive_threshold=False))
+        )
+        fixed_candidates = fixed_proc._detect_segments(cat_band, sr)
+        assert len(fixed_candidates) == 0, "Fixed threshold should miss the quiet meow"
+
+        # Adaptive threshold (floor -52dBFS) must detect it
+        adaptive_candidates = processor._detect_segments(cat_band, sr)
+        assert len(adaptive_candidates) >= 1
+
+    def test_adaptive_floor_clamps_threshold(self):
+        """If percentile + offset would fall below adaptive_floor_dbfs, clamp to floor."""
+        processor = MeowProcessor()
+        # All active frames at -75dBFS: P30=-75, threshold=-75+10=-65, clamped to floor
+        very_quiet = np.full(10000, -75.0)
+        threshold = processor._compute_adaptive_threshold(very_quiet)
+        assert threshold == processor.config.segmentation.adaptive_floor_dbfs
+
+    def test_adaptive_ceiling_clamps_threshold(self):
+        """If percentile + offset would exceed adaptive_ceiling_dbfs, clamp to ceiling."""
+        processor = MeowProcessor()
+        # All frames near -10 dBFS → high percentile → threshold must clamp to ceiling
+        very_loud = np.full(10000, -10.0)
+        threshold = processor._compute_adaptive_threshold(very_loud)
+        assert threshold == processor.config.segmentation.adaptive_ceiling_dbfs
+
+    def test_disabled_adaptive_uses_fixed_threshold(self):
+        """With adaptive_threshold=False, the fixed silence_threshold_dbfs is returned."""
+        from meowdb.models import ProcessorConfig, SegmentationConfig
+        config = ProcessorConfig(segmentation=SegmentationConfig(adaptive_threshold=False))
+        processor = MeowProcessor(config=config)
+        frame_dbfs = np.linspace(-80, -20, 1000)
+        threshold = processor._compute_adaptive_threshold(frame_dbfs)
+        assert threshold == config.segmentation.silence_threshold_dbfs
+
+
+@pytest.mark.unit
+class TestSpectralClassifier:
+    def test_pure_tone_has_low_flatness(self):
+        """A pure 800Hz sine has near-zero spectral flatness (highly tonal)."""
+        processor = MeowProcessor()
+        audio = _make_sine_wav(800, 500)
+        samples = processor._audio_to_numpy(audio)
+        flatness = processor._spectral_flatness(samples, audio.frame_rate)
+        assert flatness < 0.1
+
+    def test_white_noise_has_high_flatness(self):
+        """White noise has flatness near 1.0 (spectrally flat)."""
+        processor = MeowProcessor()
+        rng = np.random.default_rng(42)
+        noise = rng.standard_normal(44100).astype(np.float32) * 0.1
+        flatness = processor._spectral_flatness(noise, 44100)
+        assert flatness > 0.4
+
+    def test_short_segment_returns_zero(self):
+        """Segments shorter than 256 samples return 0.0 (assumed tonal, passes test3)."""
+        processor = MeowProcessor()
+        short = np.zeros(100, dtype=np.float32)
+        flatness = processor._spectral_flatness(short, 44100)
+        assert flatness == 0.0
+
+
+@pytest.mark.unit
+class TestPeakRatioClassifier:
+    def test_peak_ratio_rescues_segment_with_brief_burst(self):
+        """A segment with a brief high-ratio window passes test2 even if avg ratio is low."""
+        sr = 44100
+        processor = MeowProcessor()
+        # 300ms low-ratio noise in cat band + 50ms pure 800Hz tone
+        rng = np.random.default_rng(7)
+        noise_samples = (rng.standard_normal(int(sr * 0.3)) * 0.005).astype(np.float32)
+        burst_audio = _make_sine_wav(800, 50, amplitude=0.5)
+        burst_samples = processor._audio_to_numpy(burst_audio)
+        combined = np.concatenate([noise_samples, burst_samples])
+
+        cat_band, low_band = processor._build_discriminator_signals(combined, sr)
+        candidates = [(0, len(combined))]
+        classified = processor._classify_segments(candidates, cat_band, low_band, sr)
+        # Should pass: the 50ms burst creates a high-ratio window
+        assert len(classified) == 1
+
+
+@pytest.mark.unit
+@_ffmpeg_available
+class TestShortMeowDetection:
+    def test_detects_100ms_meow(self, tmp_path: Path):
+        """A 100ms 800Hz tone (above new min_segment_ms=80) is found as a candidate."""
+        sr = 44100
+        silence = AudioSegment.silent(duration=400, frame_rate=sr)
+        meow = _make_sine_wav(800, 100, amplitude=0.6)
+        full = silence + meow + silence
+        wav_path = tmp_path / "short_meow.wav"
+        _save_wav(full, wav_path)
+
+        processor = MeowProcessor()
+        audio, samples, rate = processor._load(wav_path)
+        cat_band, _ = processor._build_discriminator_signals(samples, rate)
+        candidates = processor._detect_segments(cat_band, rate)
+        assert len(candidates) >= 1
+
+    def test_still_rejects_50ms(self, tmp_path: Path):
+        """A 50ms tone is still below min_segment_ms=80 and must be rejected."""
+        sr = 44100
+        silence = AudioSegment.silent(duration=400, frame_rate=sr)
+        meow = _make_sine_wav(800, 50, amplitude=0.6)
+        full = silence + meow + silence
+        wav_path = tmp_path / "very_short.wav"
+        _save_wav(full, wav_path)
+
+        processor = MeowProcessor()
+        audio, samples, rate = processor._load(wav_path)
+        cat_band, _ = processor._build_discriminator_signals(samples, rate)
+        candidates = processor._detect_segments(cat_band, rate)
+        assert len(candidates) == 0
