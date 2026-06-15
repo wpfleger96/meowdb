@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import time
 
+import bcrypt
+
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
@@ -19,9 +21,10 @@ _CLEANUP_THRESHOLD = 1000
 
 
 def _client_ip(request: Request) -> str:
-    cf_ip = request.headers.get("cf-connecting-ip")
-    if cf_ip:
-        return cf_ip
+    if HOST not in ("127.0.0.1", "localhost"):
+        cf_ip = request.headers.get("cf-connecting-ip")
+        if cf_ip:
+            return cf_ip
     return request.client.host if request.client else "unknown"
 
 
@@ -31,10 +34,11 @@ def _check_lockout(ip: str) -> None:
     count, last_time = _failed_attempts[ip]
     if count < _MAX_ATTEMPTS:
         return
-    lockout_duration = _LOCKOUT_BASE_SECONDS * (2 ** (count - _MAX_ATTEMPTS))
-    lockout_duration = min(lockout_duration, 3600)
+    exponent = min(count - _MAX_ATTEMPTS, 7)
+    lockout_duration = min(_LOCKOUT_BASE_SECONDS * (2**exponent), 3600)
     if time.time() - last_time < lockout_duration:
         raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
+    _failed_attempts.pop(ip, None)
 
 
 def _record_failure(ip: str) -> None:
@@ -70,20 +74,25 @@ class LoginRequest(BaseModel):
 
 @router.post("/login")
 async def login(body: LoginRequest, request: Request) -> dict[str, str]:
-    import bcrypt
-
     ip = _client_ip(request)
     _check_lockout(ip)
 
     if not PASSWORD_HASH:
         raise HTTPException(status_code=503, detail="Authentication not configured")
 
-    if bcrypt.checkpw(body.password.encode(), PASSWORD_HASH.encode()):
+    try:
+        valid = bcrypt.checkpw(body.password.encode(), PASSWORD_HASH.encode())
+    except ValueError:
+        valid = False
+
+    if valid:
         _record_success(ip)
         request.session["authenticated"] = True
+        _logger.info("Login success from %s", ip)
         return {"status": "ok"}
 
     _record_failure(ip)
+    _logger.warning("Login failure from %s (attempt %d)", ip, _failed_attempts.get(ip, (0,))[0])
     raise HTTPException(status_code=401, detail="Invalid password")
 
 

@@ -79,6 +79,12 @@ function app() {
         this.currentView = pathToView(e.detail.path);
       });
 
+      window.addEventListener('auth-expired', () => {
+        this.authenticated = false;
+        this.showLoginModal = true;
+        this.loginError = '';
+      });
+
       try {
         const s = await getAuthStatus();
         this.authenticated = s.authenticated;
@@ -106,10 +112,12 @@ function app() {
         await login(this.loginPassword);
         this.authenticated = true;
         this.showLoginModal = false;
-        this.loginPassword = '';
       } catch (e) {
-        this.loginError = e.message || 'Login failed';
+        this.loginError = e.message === 'Authentication not configured'
+          ? 'Login is currently unavailable'
+          : (e.message || 'Login failed');
       } finally {
+        this.loginPassword = '';
         this.loginLoading = false;
       }
     },
@@ -119,14 +127,7 @@ function app() {
         await logout();
       } catch (_) {}
       this.authenticated = false;
-    },
-
-    requireAuth() {
-      if (!this.authenticated) {
-        this.showLoginModal = true;
-        return false;
-      }
-      return true;
+      this.loginError = '';
     },
   };
 }

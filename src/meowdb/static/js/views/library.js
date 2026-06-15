@@ -212,6 +212,10 @@ function libraryView() {
 
     removeLabel(label) {
       if (!this.detailMeow) return;
+      if (!this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
       this.detailMeow.labels = this.detailMeow.labels.filter((l) => l !== label);
       this._saveLabels();
     },

@@ -26,6 +26,10 @@ async function apiFetch(path, opts = {}) {
 
   const body = await res.json().catch(() => ({ detail: res.statusText }));
 
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent('auth-expired'));
+  }
+
   if (!res.ok) {
     const msg = body?.detail || `API error ${res.status}`;
     throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));

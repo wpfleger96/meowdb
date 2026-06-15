@@ -232,6 +232,10 @@ function ingestView() {
     },
 
     async autoDetect() {
+      if (!this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
       this.isAutoDetecting = true;
       try {
         const result = await detectRegions(this.jobId);
@@ -257,6 +261,10 @@ function ingestView() {
     },
 
     async saveClips() {
+      if (!this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
       const regions = this._regionsPlugin.getRegions();
       if (regions.length === 0) {
         showToast('Draw at least one region first', 'info');

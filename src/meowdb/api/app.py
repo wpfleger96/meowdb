@@ -41,6 +41,12 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
             "MEOWDB_CORS_ORIGINS resolved to empty list — all cross-origin requests will be blocked"
         )
 
+    _DEFAULT_SECRET = "local-dev-secret-not-for-production"
+    if SESSION_SECRET == _DEFAULT_SECRET and HOST not in ("127.0.0.1", "localhost"):
+        _logger.warning(
+            "MEOWDB_SESSION_SECRET is using the default value — session cookies are forgeable"
+        )
+
     for directory in (DATA_DIR, WAV_DIR, MP3_DIR, STAGING_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -57,12 +63,13 @@ def create_app() -> FastAPI:
         allow_origins=CORS_ORIGINS,
         allow_methods=["*"],
         allow_headers=["*"],
+        allow_credentials=True,
     )
     app.add_middleware(
         SessionMiddleware,
         secret_key=SESSION_SECRET,
         max_age=14 * 24 * 3600,
-        https_only=HOST != "127.0.0.1",
+        https_only=HOST not in ("127.0.0.1", "localhost"),
         same_site="lax",
     )
 
