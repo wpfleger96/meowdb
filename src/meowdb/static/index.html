@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/views.css">
   <link rel="stylesheet" href="/static/css/desktop.css">
+  <style>[x-cloak] { display: none !important; }</style>
 
   <!-- App scripts — load in dependency order, all deferred -->
   <script src="/static/js/api.js" defer></script>
@@ -615,6 +616,12 @@
         <span class="nav-brand-name">MeowDB</span>
       </div>
 
+      <!-- Auth controls -->
+      <div class="nav-auth" x-cloak>
+        <button x-show="authenticated" @click="doLogout()" class="btn btn-ghost btn-sm">Logout</button>
+        <button x-show="!authenticated" @click="showLoginModal = true" class="btn btn-ghost btn-sm">Login</button>
+      </div>
+
       <!-- Play tab -->
       <button
         :class="navClass('play')"
@@ -676,6 +683,44 @@
     </nav>
 
   </div><!-- /#app -->
+
+  <!-- Login modal -->
+  <div
+    x-show="showLoginModal"
+    x-cloak
+    class="modal-backdrop modal-confirm"
+    @click.self="showLoginModal = false"
+    @keydown.escape.window="showLoginModal = false"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Login"
+    x-effect="if (showLoginModal) $nextTick(() => $refs.loginPasswordInput?.focus())"
+  >
+    <div class="modal-sheet" @click.stop>
+      <div class="modal-body">
+        <h2 class="modal-title">Login</h2>
+        <form @submit.prevent="doLogin()">
+          <input
+            type="password"
+            x-model="loginPassword"
+            x-ref="loginPasswordInput"
+            placeholder="Password"
+            class="input"
+            :disabled="loginLoading"
+            autocomplete="current-password"
+          >
+          <p x-show="loginError" x-text="loginError" class="error-text"></p>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" @click="showLoginModal = false" :disabled="loginLoading">Cancel</button>
+            <button type="submit" class="btn btn-primary" :disabled="loginLoading || !loginPassword">
+              <span x-show="!loginLoading">Login</span>
+              <span x-show="loginLoading">…</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 
   <!-- Service worker registration -->
   <script>

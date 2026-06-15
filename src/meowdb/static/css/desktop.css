@@ -203,6 +203,13 @@
     grid-column: 1 / -1;
   }
 
+  .nav-auth {
+    position: static;
+    transform: none;
+    margin-top: auto;
+    padding: var(--sp-3) 0;
+  }
+
 }
 
 /* Hover states: only for pointer (non-touch) devices */

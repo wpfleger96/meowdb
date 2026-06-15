@@ -9,6 +9,7 @@ import wave
 from pathlib import Path
 from unittest.mock import patch
 
+import bcrypt
 import pytest
 
 with warnings.catch_warnings():
@@ -16,6 +17,9 @@ with warnings.catch_warnings():
     from starlette.testclient import TestClient
 
 from meowdb.api.app import create_app
+
+_TEST_PASSWORD = "hunter2"
+_TEST_HASH = bcrypt.hashpw(_TEST_PASSWORD.encode(), bcrypt.gensalt()).decode()
 
 
 def _make_silent_wav_bytes() -> bytes:
@@ -61,6 +65,10 @@ def client(tmp_dirs):
         patch("meowdb.api.routers.audio.MP3_DIR", tmp_dirs["mp3"]),
         patch("meowdb.api.routers.meows.WAV_DIR", tmp_dirs["wav"]),
         patch("meowdb.api.routers.meows.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.app.SESSION_SECRET", "test-secret-key"),
+        patch("meowdb.api.app.HOST", "127.0.0.1"),
+        patch("meowdb.api.auth.AUTH_DISABLED", True),
+        patch("meowdb.api.auth.HOST", "127.0.0.1"),
         warnings.catch_warnings(),
     ):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -95,6 +103,10 @@ def seeded_client(tmp_dirs):
         patch("meowdb.api.routers.audio.MP3_DIR", mp3_dir),
         patch("meowdb.api.routers.meows.WAV_DIR", wav_dir),
         patch("meowdb.api.routers.meows.MP3_DIR", mp3_dir),
+        patch("meowdb.api.app.SESSION_SECRET", "test-secret-key"),
+        patch("meowdb.api.app.HOST", "127.0.0.1"),
+        patch("meowdb.api.auth.AUTH_DISABLED", True),
+        patch("meowdb.api.auth.HOST", "127.0.0.1"),
         warnings.catch_warnings(),
     ):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -302,6 +314,10 @@ def test_ingest_flow_post_and_poll(tmp_dirs):
         patch("meowdb.api.routers.audio.MP3_DIR", tmp_dirs["mp3"]),
         patch("meowdb.api.routers.meows.WAV_DIR", tmp_dirs["wav"]),
         patch("meowdb.api.routers.meows.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.app.SESSION_SECRET", "test-secret-key"),
+        patch("meowdb.api.app.HOST", "127.0.0.1"),
+        patch("meowdb.api.auth.AUTH_DISABLED", True),
+        patch("meowdb.api.auth.HOST", "127.0.0.1"),
         warnings.catch_warnings(),
     ):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -346,6 +362,10 @@ def test_ingest_commit(tmp_dirs):
         patch("meowdb.api.routers.audio.MP3_DIR", mp3_dir),
         patch("meowdb.api.routers.meows.WAV_DIR", wav_dir),
         patch("meowdb.api.routers.meows.MP3_DIR", mp3_dir),
+        patch("meowdb.api.app.SESSION_SECRET", "test-secret-key"),
+        patch("meowdb.api.app.HOST", "127.0.0.1"),
+        patch("meowdb.api.auth.AUTH_DISABLED", True),
+        patch("meowdb.api.auth.HOST", "127.0.0.1"),
         warnings.catch_warnings(),
     ):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -503,3 +523,207 @@ def test_health_returns_503_when_db_unreachable(client):
         resp = client.get("/health")
     assert resp.status_code == 503
     assert resp.json() == {"status": "error"}
+
+
+@pytest.fixture
+def auth_client(tmp_dirs):
+    with (
+        patch("meowdb.api.app.DB_PATH", tmp_dirs["db"]),
+        patch("meowdb.api.app.DATA_DIR", tmp_dirs["data"]),
+        patch("meowdb.api.app.WAV_DIR", tmp_dirs["wav"]),
+        patch("meowdb.api.app.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.app.STAGING_DIR", tmp_dirs["staging"]),
+        patch("meowdb.api.app._STATIC_DIR", tmp_dirs["static"]),
+        patch("meowdb.api.app._INDEX_HTML", tmp_dirs["static"] / "index.html"),
+        patch("meowdb.api.routers.ingest.STAGING_DIR", tmp_dirs["staging"]),
+        patch("meowdb.api.routers.ingest.WAV_DIR", tmp_dirs["wav"]),
+        patch("meowdb.api.routers.ingest.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.routers.audio.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.routers.meows.WAV_DIR", tmp_dirs["wav"]),
+        patch("meowdb.api.routers.meows.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.app.SESSION_SECRET", "test-secret-key"),
+        patch("meowdb.api.app.HOST", "127.0.0.1"),
+        patch("meowdb.api.auth.HOST", "0.0.0.0"),
+        patch("meowdb.api.auth.PASSWORD_HASH", _TEST_HASH),
+        patch("meowdb.api.auth.AUTH_DISABLED", False),
+        warnings.catch_warnings(),
+    ):
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        app = create_app()
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            yield tc
+
+
+@pytest.mark.integration
+def test_auth_status_unauthenticated(auth_client):
+    resp = auth_client.get("/api/auth/status")
+    assert resp.status_code == 200
+    assert resp.json() == {"authenticated": False}
+
+
+@pytest.mark.integration
+def test_login_wrong_password(auth_client):
+    from meowdb.api import auth as auth_module
+
+    resp = auth_client.post("/api/auth/login", json={"password": "wrongpassword"})
+    assert resp.status_code == 401
+    auth_module._failed_attempts.clear()
+
+
+@pytest.mark.integration
+def test_login_no_password_configured(tmp_dirs):
+    with (
+        patch("meowdb.api.app.DB_PATH", tmp_dirs["db"]),
+        patch("meowdb.api.app.DATA_DIR", tmp_dirs["data"]),
+        patch("meowdb.api.app.WAV_DIR", tmp_dirs["wav"]),
+        patch("meowdb.api.app.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.app.STAGING_DIR", tmp_dirs["staging"]),
+        patch("meowdb.api.app._STATIC_DIR", tmp_dirs["static"]),
+        patch("meowdb.api.app._INDEX_HTML", tmp_dirs["static"] / "index.html"),
+        patch("meowdb.api.routers.ingest.STAGING_DIR", tmp_dirs["staging"]),
+        patch("meowdb.api.routers.ingest.WAV_DIR", tmp_dirs["wav"]),
+        patch("meowdb.api.routers.ingest.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.routers.audio.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.routers.meows.WAV_DIR", tmp_dirs["wav"]),
+        patch("meowdb.api.routers.meows.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.app.SESSION_SECRET", "test-secret-key"),
+        patch("meowdb.api.app.HOST", "127.0.0.1"),
+        patch("meowdb.api.auth.PASSWORD_HASH", ""),
+        patch("meowdb.api.auth.AUTH_DISABLED", False),
+        warnings.catch_warnings(),
+    ):
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        app = create_app()
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            resp = tc.post("/api/auth/login", json={"password": "anything"})
+            assert resp.status_code == 503
+
+
+@pytest.mark.integration
+def test_login_success_and_auth_status(auth_client):
+    resp = auth_client.post("/api/auth/login", json={"password": _TEST_PASSWORD})
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+    status_resp = auth_client.get("/api/auth/status")
+    assert status_resp.json() == {"authenticated": True}
+
+
+@pytest.mark.integration
+def test_delete_meow_requires_auth(auth_client):
+    resp = auth_client.delete("/api/meows/nonexistent-id")
+    assert resp.status_code == 401
+
+
+@pytest.mark.integration
+def test_public_endpoint_without_auth(auth_client):
+    resp = auth_client.get("/api/meows")
+    assert resp.status_code == 200
+
+
+@pytest.mark.integration
+def test_logout(auth_client):
+    auth_client.post("/api/auth/login", json={"password": _TEST_PASSWORD})
+
+    resp = auth_client.post("/api/auth/logout")
+    assert resp.status_code == 200
+
+    resp = auth_client.delete("/api/meows/nonexistent-id")
+    assert resp.status_code == 401
+
+
+@pytest.mark.integration
+def test_brute_force_lockout(auth_client):
+    from meowdb.api import auth as auth_module
+
+    auth_module._failed_attempts.clear()
+
+    for _ in range(5):
+        auth_client.post("/api/auth/login", json={"password": "wrong"})
+
+    resp = auth_client.post("/api/auth/login", json={"password": "wrong"})
+    assert resp.status_code == 429
+
+    auth_module._failed_attempts.clear()
+
+
+@pytest.mark.integration
+def test_patch_meow_requires_auth(auth_client):
+    resp = auth_client.patch("/api/meows/nonexistent-id", json={"labels": ["test"]})
+    assert resp.status_code == 401
+
+
+@pytest.mark.integration
+def test_login_grants_access_to_protected_endpoint(auth_client):
+    auth_client.post("/api/auth/login", json={"password": _TEST_PASSWORD})
+    resp = auth_client.patch("/api/meows/nonexistent-id", json={"labels": ["test"]})
+    assert resp.status_code == 404  # 404 not found, not 401 unauthorized
+
+
+@pytest.mark.integration
+def test_ingest_requires_auth(auth_client):
+    wav_bytes = _make_silent_wav_bytes()
+    resp = auth_client.post(
+        "/api/ingest",
+        files={"file": ("test.wav", io.BytesIO(wav_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.integration
+def test_auth_bypass_requires_localhost(tmp_dirs):
+    """AUTH_DISABLED=True with a public HOST still enforces auth."""
+    with (
+        patch("meowdb.api.app.DB_PATH", tmp_dirs["db"]),
+        patch("meowdb.api.app.DATA_DIR", tmp_dirs["data"]),
+        patch("meowdb.api.app.WAV_DIR", tmp_dirs["wav"]),
+        patch("meowdb.api.app.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.app.STAGING_DIR", tmp_dirs["staging"]),
+        patch("meowdb.api.app._STATIC_DIR", tmp_dirs["static"]),
+        patch("meowdb.api.app._INDEX_HTML", tmp_dirs["static"] / "index.html"),
+        patch("meowdb.api.routers.ingest.STAGING_DIR", tmp_dirs["staging"]),
+        patch("meowdb.api.routers.ingest.WAV_DIR", tmp_dirs["wav"]),
+        patch("meowdb.api.routers.ingest.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.routers.audio.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.routers.meows.WAV_DIR", tmp_dirs["wav"]),
+        patch("meowdb.api.routers.meows.MP3_DIR", tmp_dirs["mp3"]),
+        patch("meowdb.api.app.SESSION_SECRET", "test-secret-key"),
+        patch("meowdb.api.app.HOST", "127.0.0.1"),
+        patch("meowdb.api.auth.AUTH_DISABLED", True),
+        patch("meowdb.api.auth.HOST", "0.0.0.0"),  # public host, bypass should NOT trigger
+        warnings.catch_warnings(),
+    ):
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        app = create_app()
+        with TestClient(app, raise_server_exceptions=True) as tc:
+            resp = tc.delete("/api/meows/nonexistent-id")
+            assert resp.status_code == 401
+
+
+@pytest.mark.integration
+def test_brute_force_lockout_expires(auth_client):
+    from unittest.mock import patch as mock_patch
+
+    from meowdb.api import auth as auth_module
+
+    auth_module._failed_attempts.clear()
+
+    # Trigger lockout
+    for _ in range(5):
+        auth_client.post("/api/auth/login", json={"password": "wrong"})
+
+    # Verify locked
+    resp = auth_client.post("/api/auth/login", json={"password": "wrong"})
+    assert resp.status_code == 429
+
+    # Simulate time advancing past lockout expiry (base is 30s, we jump 31s)
+    import time as time_module
+
+    real_time = time_module.time()
+    with mock_patch("meowdb.api.auth.time") as mock_time:
+        mock_time.time.return_value = real_time + 31
+        resp = auth_client.post("/api/auth/login", json={"password": "wrong"})
+        # After expiry, attempt counter resets and we get 401 (not 429)
+        assert resp.status_code == 401
+
+    auth_module._failed_attempts.clear()

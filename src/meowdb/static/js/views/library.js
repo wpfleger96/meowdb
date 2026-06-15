@@ -212,6 +212,10 @@ function libraryView() {
 
     removeLabel(label) {
       if (!this.detailMeow) return;
+      if (!this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
       this.detailMeow.labels = this.detailMeow.labels.filter((l) => l !== label);
       this._saveLabels();
     },
@@ -230,6 +234,10 @@ function libraryView() {
 
     async _saveLabels() {
       if (!this.detailMeow) return;
+      if (!this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
       try {
         await updateLabels(this.detailMeow.id, this.detailMeow.labels);
         // Update the row in the list too
@@ -246,6 +254,10 @@ function libraryView() {
 
     async saveTitle() {
       if (!this.detailMeow) return;
+      if (!this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
       try {
         const updated = await updateMeow(this.detailMeow.id, { title: this.detailTitle || null });
         this.detailMeow = { ...updated, labels: updated.labels || [] };
@@ -266,6 +278,10 @@ function libraryView() {
 
     async deleteMeowConfirmed() {
       if (!this.detailMeow) return;
+      if (!this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
       const id = this.detailMeow.id;
       try {
         await deleteMeow(id);

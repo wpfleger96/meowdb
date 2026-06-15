@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
+from meowdb.api.auth import require_auth
 from meowdb.api.models import MeowListResponse, MeowResponse, UpdateMeowRequest
 from meowdb.api.streaming import safe_path
 from meowdb.config import MP3_DIR, WAV_DIR
@@ -64,6 +65,7 @@ async def update_meow(
     meow_id: str,
     body: UpdateMeowRequest,
     request: Request,
+    _: None = Depends(require_auth),
 ) -> MeowResponse:
     db = request.app.state.db
     if body.labels is not None:
@@ -84,7 +86,7 @@ async def update_meow(
 
 
 @router.delete("/meows/{meow_id}", status_code=204)
-async def delete_meow(meow_id: str, request: Request) -> Response:
+async def delete_meow(meow_id: str, request: Request, _: None = Depends(require_auth)) -> Response:
     db = request.app.state.db
     meow = db.get_by_id(meow_id)
     if meow is None:

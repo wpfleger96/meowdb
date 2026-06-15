@@ -540,3 +540,33 @@
   letter-spacing: 0.08em;
   padding: var(--sp-4) var(--sp-4) var(--sp-2);
 }
+
+/* ============================================================
+   Auth — modal actions, error text, small buttons
+   ============================================================ */
+
+.modal-actions {
+  display: flex;
+  gap: var(--sp-3);
+  justify-content: flex-end;
+  margin-top: var(--sp-4);
+}
+
+.error-text {
+  color: var(--red);
+  font-size: var(--text-sm);
+  margin-top: var(--sp-2);
+}
+
+.btn-sm {
+  height: 32px;
+  padding: 0 var(--sp-3);
+  font-size: var(--text-sm);
+}
+
+.nav-auth {
+  position: absolute;
+  right: var(--sp-3);
+  top: 50%;
+  transform: translateY(-50%);
+}

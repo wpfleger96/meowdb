@@ -62,8 +62,13 @@ function showToast(message, type = 'info', duration = 3000) {
 function app() {
   return {
     currentView: pathToView(location.pathname),
+    authenticated: false,
+    showLoginModal: false,
+    loginPassword: '',
+    loginError: '',
+    loginLoading: false,
 
-    init() {
+    async init() {
       // Handle browser back/forward
       window.addEventListener('popstate', () => {
         this.currentView = pathToView(location.pathname);
@@ -73,6 +78,19 @@ function app() {
       window.addEventListener('route-change', (e) => {
         this.currentView = pathToView(e.detail.path);
       });
+
+      window.addEventListener('auth-expired', () => {
+        this.authenticated = false;
+        this.showLoginModal = true;
+        this.loginError = '';
+      });
+
+      try {
+        const s = await getAuthStatus();
+        this.authenticated = s.authenticated;
+      } catch (_) {
+        // auth status check is best-effort; if it fails, assume unauthenticated
+      }
     },
 
     isView(name) {
@@ -85,6 +103,31 @@ function app() {
 
     navClass(view) {
       return this.currentView === view ? 'nav-tab active' : 'nav-tab';
+    },
+
+    async doLogin() {
+      this.loginLoading = true;
+      this.loginError = '';
+      try {
+        await login(this.loginPassword);
+        this.authenticated = true;
+        this.showLoginModal = false;
+      } catch (e) {
+        this.loginError = e.message === 'Authentication not configured'
+          ? 'Login is currently unavailable'
+          : (e.message || 'Login failed');
+      } finally {
+        this.loginPassword = '';
+        this.loginLoading = false;
+      }
+    },
+
+    async doLogout() {
+      try {
+        await logout();
+      } catch (_) {}
+      this.authenticated = false;
+      this.loginError = '';
     },
   };
 }
