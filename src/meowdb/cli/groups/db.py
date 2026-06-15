@@ -96,7 +96,7 @@ def vacuum(force: bool, db_path: str | None) -> None:
 
 
 @db.command()
-@click.option("--force", is_flag=True, help="Skip all confirmation prompts.")
+@click.option("--force", is_flag=True, help="Skip confirmation prompt.")
 @db_path_option
 def drop(force: bool, db_path: str | None) -> None:
     """Delete the database file permanently."""
@@ -116,11 +116,8 @@ def drop(force: bool, db_path: str | None) -> None:
     print_info(f"  File: {path}")
     print_info(f"  Size: {_format_bytes(size)}")
 
-    if not force:
-        if not click.confirm("Are you sure?", default=False):
-            return
-        if not click.confirm("Really delete? This cannot be undone.", default=False):
-            return
+    if not force and not click.confirm("Are you sure?", default=False):
+        return
 
     path.unlink()
     for ext in (".wal", ".shm"):
