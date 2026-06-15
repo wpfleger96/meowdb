@@ -94,4 +94,4 @@ jobs:
         working-directory: ui
 
       - name: Run end-to-end tests
-        run: just e2e
+        run: just test-e2e
