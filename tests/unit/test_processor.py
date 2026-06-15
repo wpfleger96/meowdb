@@ -136,7 +136,7 @@ class TestSegmentDetection:
 @pytest.mark.unit
 class TestClassification:
     def test_accepts_cat_frequency_segment(self):
-        """800Hz has high cat-band energy; ratio >= 1.2 → accepted."""
+        """800Hz has high cat-band energy; ratio >= min_cat_energy_ratio → accepted."""
         processor = MeowProcessor()
         audio = _make_sine_wav(800, 1000, amplitude=0.6)
         samples = processor._audio_to_numpy(audio)
@@ -144,7 +144,7 @@ class TestClassification:
         candidates = [(0, len(samples))]
         classified = processor._classify_segments(candidates, cat_band, low_band, audio.frame_rate)
         assert len(classified) == 1
-        assert classified[0][2] >= 1.2  # ratio field
+        assert classified[0][2] >= processor.config.segmentation.min_cat_energy_ratio
 
     def test_rejects_speech_frequency_segment(self):
         """150Hz lives in low band; ratio < 1.2 → rejected."""
@@ -306,7 +306,7 @@ class TestAdaptiveThreshold:
 
         The recording has 5s of background noise at ~-78dBFS in the cat band. The P30
         of active frames falls in the noise floor, driving the adaptive threshold to the
-        -52dBFS floor. The meow's ~-47dBFS RMS is above that floor but below the fixed
+        -45dBFS floor. The meow's ~-43dBFS RMS is above that floor but below the fixed
         -40dBFS threshold, so only adaptive detection catches it.
         """
         sr = 44100
@@ -317,15 +317,16 @@ class TestAdaptiveThreshold:
         rng = np.random.default_rng(42)
         samples = (rng.standard_normal(n_total) * 0.0002).astype(np.float32)
 
-        # 800Hz burst at amplitude 0.006 (~-47dBFS RMS) from 2.0s to 2.4s
+        # 800Hz burst at amplitude 0.01 (~-43dBFS RMS) from 2.0s to 2.4s
+        # Below fixed threshold (-40dBFS) but above adaptive floor (-45dBFS)
         meow_start = int(sr * 2.0)
         meow_end = int(sr * 2.4)
         t = np.arange(meow_end - meow_start) / sr
-        samples[meow_start:meow_end] += (0.006 * np.sin(2 * np.pi * 800 * t)).astype(np.float32)
+        samples[meow_start:meow_end] += (0.010 * np.sin(2 * np.pi * 800 * t)).astype(np.float32)
 
         cat_band, _ = processor._build_discriminator_signals(samples, sr)
 
-        # Fixed threshold (-40dBFS) must miss the meow (meow RMS ~ -47dBFS < -40)
+        # Fixed threshold (-40dBFS) must miss the meow (meow RMS ~ -43dBFS < -40)
         from meowdb.models import ProcessorConfig, SegmentationConfig
 
         fixed_proc = MeowProcessor(
@@ -334,7 +335,7 @@ class TestAdaptiveThreshold:
         fixed_candidates = fixed_proc._detect_segments(cat_band, sr)
         assert len(fixed_candidates) == 0, "Fixed threshold should miss the quiet meow"
 
-        # Adaptive threshold (floor -52dBFS) must detect it
+        # Adaptive threshold (floor -45dBFS) must detect it
         adaptive_candidates = processor._detect_segments(cat_band, sr)
         assert len(adaptive_candidates) >= 1
 
@@ -392,12 +393,16 @@ class TestSpectralClassifier:
 
 
 @pytest.mark.unit
-class TestPeakRatioClassifier:
-    def test_peak_ratio_rescues_segment_with_brief_burst(self):
-        """A segment with a brief high-ratio window passes test2 even if avg ratio is low."""
+class TestClassifierRequiresAllThree:
+    def test_rejects_noisy_segment_despite_high_ratios(self):
+        """All 3 tests must pass; broadband noise fails test3 even when ratio tests pass.
+
+        A 50ms 800Hz burst mixed into 300ms of white noise produces high avg_ratio and
+        peak_ratio (the burst dominates energy), but the noise elevates spectral flatness
+        above the 0.45 threshold. The 3-of-3 requirement correctly rejects this segment.
+        """
         sr = 44100
         processor = MeowProcessor()
-        # 300ms low-ratio noise in cat band + 50ms pure 800Hz tone
         rng = np.random.default_rng(7)
         noise_samples = (rng.standard_normal(int(sr * 0.3)) * 0.005).astype(np.float32)
         burst_audio = _make_sine_wav(800, 50, amplitude=0.5)
@@ -407,8 +412,8 @@ class TestPeakRatioClassifier:
         cat_band, low_band = processor._build_discriminator_signals(combined, sr)
         candidates = [(0, len(combined))]
         classified = processor._classify_segments(candidates, cat_band, low_band, sr)
-        # Should pass: the 50ms burst creates a high-ratio window
-        assert len(classified) == 1
+        # Ratio tests pass but spectral flatness > 0.45 due to noise → rejected
+        assert len(classified) == 0
 
 
 @pytest.mark.unit

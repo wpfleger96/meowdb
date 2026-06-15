@@ -323,7 +323,7 @@ class MeowProcessor:
             else:
                 test3 = True
 
-            if sum([test1, test2, test3]) >= 2:
+            if test1 and test2 and test3:
                 result.append((s, e, max(avg_ratio, peak_ratio)))
         return result
 

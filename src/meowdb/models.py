@@ -17,13 +17,13 @@ class SegmentationConfig(BaseModel):
     min_silence_ms: int = 150
     min_segment_ms: int = 80
     max_segment_ms: int = 5000
-    min_cat_energy_ratio: float = 2.0
+    min_cat_energy_ratio: float = 3.0
     pre_pad_ms: int = 200
     post_pad_ms: int = 200
     adaptive_threshold: bool = True
     adaptive_percentile: float = 30.0
     adaptive_offset_db: float = 10.0
-    adaptive_floor_dbfs: float = -52.0
+    adaptive_floor_dbfs: float = -45.0
     adaptive_ceiling_dbfs: float = -35.0
     min_peak_ratio: float = 3.5
     peak_ratio_window_ms: int = 50
