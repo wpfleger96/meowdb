@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/static/css/layout.css">
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/views.css">
+  <link rel="stylesheet" href="/static/css/desktop.css">
 
   <!-- App scripts — load in dependency order, all deferred -->
   <script src="/static/js/api.js" defer></script>
@@ -110,7 +111,7 @@
       x-data="libraryView()"
       x-init="init()"
     >
-      <div class="library-view">
+      <div class="library-view" :class="{ 'detail-open': showDetail }">
 
         <!-- Sticky header with sort dropdown -->
         <div class="library-header view-header">
@@ -366,7 +367,7 @@
         </div>
 
         <!-- ── idle: upload UI ── -->
-        <div x-show="phase === 'idle'">
+        <div class="ingest-idle" x-show="phase === 'idle'">
           <!-- Drop zone -->
           <div
             class="upload-zone"
@@ -399,7 +400,7 @@
           >
 
           <!-- Divider -->
-          <div class="flex items-center gap-3" style="padding:0 var(--sp-4); margin: var(--sp-2) 0;">
+          <div class="ingest-or-divider flex items-center gap-3" style="padding:0 var(--sp-4); margin: var(--sp-2) 0;">
             <div class="divider" style="flex:1;margin:0;"></div>
             <span class="text-muted text-sm">or</span>
             <div class="divider" style="flex:1;margin:0;"></div>
@@ -496,7 +497,7 @@
 
         <!-- Stats content -->
         <template x-if="!isLoading && stats">
-          <div class="flex flex-col gap-5" style="padding-top: var(--sp-4);">
+          <div class="stats-content flex flex-col gap-5" style="padding-top: var(--sp-4);">
 
             <!-- 2×2 stat tile grid -->
             <div class="stats-grid">
@@ -580,6 +581,12 @@
          Bottom navigation bar
     ══════════════════════════════════════════════════ -->
     <nav class="bottom-nav" role="navigation" aria-label="Main navigation">
+
+      <!-- Desktop sidebar brand (hidden on mobile via layout.css) -->
+      <div class="nav-brand" aria-hidden="true">
+        <span class="nav-brand-icon">🐱</span>
+        <span class="nav-brand-name">MeowDB</span>
+      </div>
 
       <!-- Play tab -->
       <button

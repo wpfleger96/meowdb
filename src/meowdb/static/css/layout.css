@@ -125,24 +125,11 @@
 }
 
 /* ============================================================
-   Responsive
+   Nav brand (hidden on mobile, shown via desktop.css)
    ============================================================ */
 
-@media (min-width: 768px) {
-  .bottom-nav {
-    /* On tablet/desktop, keep it but cap width and center */
-    max-width: 600px;
-    left: 50%;
-    transform: translateX(-50%);
-    border-left: 1px solid var(--border);
-    border-right: 1px solid var(--border);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  }
-
-  #app {
-    max-width: 600px;
-    margin: 0 auto;
-  }
+.nav-brand {
+  display: none;
 }
 
 /* ============================================================
