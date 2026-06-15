@@ -5,17 +5,21 @@ import shutil
 
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, UploadFile
+from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from meowdb.api.models import (
+    ClipRequest,
     CommitRequest,
     CommitResponse,
+    DetectRegion,
+    DetectResponse,
     IngestJobResponse,
     IngestSegmentResponse,
 )
 from meowdb.api.streaming import safe_path, stream_file
-from meowdb.config import DB_PATH, MP3_DIR, STAGING_DIR, WAV_DIR
+from meowdb.config import MP3_DIR, STAGING_DIR, WAV_DIR
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -48,38 +52,20 @@ def _job_to_response(job: dict) -> IngestJobResponse:  # type: ignore[type-arg]
     )
 
 
-def _run_processor(db_path: Path, job_id: str, source_path: Path, staging_dir: Path) -> None:
-    from meowdb.db import MeowDB
-    from meowdb.processor import MeowProcessor
-
-    db = MeowDB(db_path)
-    try:
-        processor = MeowProcessor()
-        result = processor.process_file(source_path, staging_dir=staging_dir)
-
-        segment_dicts = [
-            {
-                "index": seg.index,
-                "duration_ms": seg.duration_ms,
-                "wav_path": str(seg.wav_path) if seg.wav_path else "",
-                "waveform_data": seg.waveform_data,
-                "peak_dbfs": seg.peak_dbfs,
-                "cat_energy_ratio": seg.cat_energy_ratio,
-            }
-            for seg in result.segments
-        ]
-        db.add_segments(job_id, segment_dicts)
-        db.update_job_status(job_id, "ready")
-    except Exception as exc:
-        db.update_job_status(job_id, "failed", error=str(exc))
-    finally:
-        db.close()
+def _resolve_source(job_id: str) -> Path:
+    """Locate the source audio file for an ingest job, with path-traversal guard."""
+    candidate = (STAGING_DIR / job_id).resolve()
+    if not str(candidate).startswith(str(STAGING_DIR.resolve())):
+        raise HTTPException(status_code=403, detail="Access denied")
+    source_files = list(candidate.glob("source.*"))
+    if not source_files:
+        raise HTTPException(status_code=404, detail="Source file not found")
+    return source_files[0]
 
 
 @router.post("/ingest", response_model=IngestJobResponse, status_code=202)
 async def create_ingest_job(
     request: Request,
-    background_tasks: BackgroundTasks,
     file: UploadFile,
 ) -> IngestJobResponse:
     db = request.app.state.db
@@ -104,20 +90,16 @@ async def create_ingest_job(
             total += len(chunk)
             if total > _MAX_UPLOAD_BYTES:
                 temp_path.unlink(missing_ok=True)
+                shutil.rmtree(job_staging_dir, ignore_errors=True)
+                db.delete_job(job_id)
                 raise HTTPException(status_code=413, detail="Upload exceeds 500 MB limit")
             dest.write(chunk)
 
-    background_tasks.add_task(
-        _run_processor,
-        DB_PATH,
-        job_id,
-        temp_path,
-        job_staging_dir,
-    )
+    db.update_job_status(job_id, "uploaded")
 
     return IngestJobResponse(
         job_id=job_id,
-        status="processing",
+        status="uploaded",
         source_filename=source_filename,
     )
 
@@ -219,3 +201,78 @@ async def delete_ingest_job(job_id: str, request: Request) -> None:
             logger.warning("Failed to remove staging dir %s", job_staging_dir)
 
     db.delete_job(job_id)
+
+
+_SOURCE_MEDIA_TYPES = {
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".aac": "audio/aac",
+    ".webm": "audio/webm",
+}
+
+
+@router.get("/ingest/{job_id}/source")
+async def stream_source_audio(job_id: str, request: Request) -> StreamingResponse:
+    db = request.app.state.db
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    source_path = _resolve_source(job_id)
+    media_type = _SOURCE_MEDIA_TYPES.get(source_path.suffix.lower(), "application/octet-stream")
+    return stream_file(source_path, request, media_type)
+
+
+@router.post("/ingest/{job_id}/detect", response_model=DetectResponse)
+async def detect_regions(job_id: str, request: Request) -> DetectResponse:
+    from meowdb.processor import MeowProcessor
+
+    db = request.app.state.db
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    source_path = _resolve_source(job_id)
+    result = await run_in_threadpool(MeowProcessor().detect_only, source_path)
+    return DetectResponse(regions=[DetectRegion(start_ms=s, end_ms=e) for s, e in result])
+
+
+@router.post("/ingest/{job_id}/clip", response_model=CommitResponse)
+async def clip_and_commit(job_id: str, body: ClipRequest, request: Request) -> CommitResponse:
+    from meowdb.processor import MeowProcessor
+
+    db = request.app.state.db
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if not body.regions:
+        raise HTTPException(status_code=400, detail="At least one region is required")
+
+    source_path = _resolve_source(job_id)
+    staging_dir = STAGING_DIR / job_id
+
+    regions = [(r.start_ms, r.end_ms) for r in body.regions]
+    segments = await run_in_threadpool(
+        MeowProcessor().process_clips, source_path, regions, staging_dir
+    )
+
+    seg_dicts = [
+        {
+            "index": seg.index,
+            "duration_ms": seg.duration_ms,
+            "wav_path": str(seg.wav_path) if seg.wav_path else "",
+            "waveform_data": seg.waveform_data,
+            "peak_dbfs": seg.peak_dbfs,
+            "cat_energy_ratio": seg.cat_energy_ratio,
+        }
+        for seg in segments
+    ]
+    db.add_segments(job_id, seg_dicts)
+    segment_ids = db.get_segment_ids(job_id)
+    meow_ids = db.commit_job(job_id, segment_ids, [], WAV_DIR, MP3_DIR)
+    shutil.rmtree(staging_dir, ignore_errors=True)
+    return CommitResponse(meow_ids=meow_ids, rejected_count=0)

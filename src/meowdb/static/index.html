@@ -428,87 +428,31 @@
           <p class="text-sm text-secondary">This may take a few seconds</p>
         </div>
 
-        <!-- ── review ── -->
-        <div class="review-container" x-show="phase === 'review'">
-
-          <!-- Progress -->
-          <div>
-            <div class="review-progress-bar">
-              <div
-                class="review-progress-fill"
-                :style="'width:' + (reviewProgress * 100) + '%'"
-              ></div>
-            </div>
-            <p class="review-progress-label" x-text="reviewLabel + ' reviewed'"></p>
+        <!-- ── clipping: waveform editor ── -->
+        <div class="clip-container" x-show="phase === 'clipping'">
+          <div class="clip-waveform-wrap">
+            <div id="clip-waveform-container"></div>
           </div>
-
-          <!-- Swipeable card area -->
-          <div class="review-card-wrap">
-            <div class="swipe-hint accept" id="hint-accept">KEEP</div>
-            <div class="swipe-hint reject" id="hint-reject">SKIP</div>
-
-            <div
-              class="review-card"
-              id="review-card"
-              x-show="currentSegment"
-              @touchstart.passive="onTouchStart($event)"
-              @touchmove="onTouchMove($event)"
-              @touchend.passive="onTouchEnd()"
-            >
-              <canvas class="review-card-waveform" id="review-waveform" aria-hidden="true"></canvas>
-
-              <div class="review-card-body">
-                <div class="review-card-meta">
-                  <span class="badge badge-default" x-text="formatDuration(currentSegment?.duration_ms)"></span>
-                  <button
-                    class="btn-icon"
-                    @click="playCurrentSegment()"
-                    aria-label="Play this segment"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                  </button>
-                </div>
-
-                <div class="review-actions">
-                  <button class="btn btn-danger" @click="rejectCurrent()">Skip</button>
-                  <button class="btn btn-success" @click="acceptCurrent()">Keep</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <p class="text-sm text-muted text-center">Swipe right to keep, left to skip</p>
-        </div>
-
-        <!-- ── summary ── -->
-        <div class="review-summary" x-show="phase === 'summary'">
-          <p class="text-xl font-bold">Review complete</p>
-
-          <div class="review-summary-counts">
-            <div class="review-summary-count">
-              <span class="review-summary-num green" x-text="acceptedCount"></span>
-              <span class="review-summary-label">to save</span>
-            </div>
-            <div class="review-summary-count">
-              <span class="review-summary-num red" x-text="rejectedCount"></span>
-              <span class="review-summary-label">skipped</span>
-            </div>
-          </div>
-
-          <template x-if="acceptedCount > 0">
-            <button class="btn btn-primary btn-full" @click="commitJob()">
-              Save
-              <span x-text="acceptedCount"></span>
-              <span x-text="acceptedCount === 1 ? ' meow' : ' meows'"></span>
+          <p class="text-sm text-muted text-center">Click and drag on the waveform to mark meow regions</p>
+          <div class="clip-transport">
+            <button class="btn btn-ghost" @click="togglePlayPause()" aria-label="Play / Pause">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             </button>
-          </template>
-          <template x-if="acceptedCount === 0">
-            <p class="text-secondary">Nothing to save — all segments were skipped.</p>
-          </template>
-
-          <button class="btn btn-ghost" @click="reset()">Start over</button>
+            <button
+              class="btn btn-ghost"
+              @click="autoDetect()"
+              :disabled="isAutoDetecting"
+              x-text="isAutoDetecting ? 'Detecting…' : 'Auto-detect'"
+            ></button>
+          </div>
+          <div class="clip-actions">
+            <button
+              class="btn btn-primary btn-full"
+              @click="saveClips()"
+              :disabled="regionCount === 0"
+              x-text="regionCount === 0 ? 'Draw regions to save' : 'Save ' + regionCount + (regionCount === 1 ? ' clip' : ' clips')"
+            ></button>
+          </div>
         </div>
 
         <!-- ── done ── -->

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import shutil
 import struct
 import warnings
 import wave
@@ -57,7 +58,6 @@ def client(tmp_dirs):
         patch("meowdb.api.routers.ingest.STAGING_DIR", tmp_dirs["staging"]),
         patch("meowdb.api.routers.ingest.WAV_DIR", tmp_dirs["wav"]),
         patch("meowdb.api.routers.ingest.MP3_DIR", tmp_dirs["mp3"]),
-        patch("meowdb.api.routers.ingest.DB_PATH", tmp_dirs["db"]),
         patch("meowdb.api.routers.audio.MP3_DIR", tmp_dirs["mp3"]),
         patch("meowdb.api.routers.meows.WAV_DIR", tmp_dirs["wav"]),
         patch("meowdb.api.routers.meows.MP3_DIR", tmp_dirs["mp3"]),
@@ -92,7 +92,6 @@ def seeded_client(tmp_dirs):
         patch("meowdb.api.routers.ingest.STAGING_DIR", tmp_dirs["staging"]),
         patch("meowdb.api.routers.ingest.WAV_DIR", wav_dir),
         patch("meowdb.api.routers.ingest.MP3_DIR", mp3_dir),
-        patch("meowdb.api.routers.ingest.DB_PATH", tmp_dirs["db"]),
         patch("meowdb.api.routers.audio.MP3_DIR", mp3_dir),
         patch("meowdb.api.routers.meows.WAV_DIR", wav_dir),
         patch("meowdb.api.routers.meows.MP3_DIR", mp3_dir),
@@ -300,8 +299,6 @@ def test_ingest_flow_post_and_poll(tmp_dirs):
         patch("meowdb.api.routers.ingest.STAGING_DIR", tmp_dirs["staging"]),
         patch("meowdb.api.routers.ingest.WAV_DIR", tmp_dirs["wav"]),
         patch("meowdb.api.routers.ingest.MP3_DIR", tmp_dirs["mp3"]),
-        patch("meowdb.api.routers.ingest.DB_PATH", tmp_dirs["db"]),
-        patch("meowdb.api.routers.ingest._run_processor"),
         patch("meowdb.api.routers.audio.MP3_DIR", tmp_dirs["mp3"]),
         patch("meowdb.api.routers.meows.WAV_DIR", tmp_dirs["wav"]),
         patch("meowdb.api.routers.meows.MP3_DIR", tmp_dirs["mp3"]),
@@ -317,7 +314,7 @@ def test_ingest_flow_post_and_poll(tmp_dirs):
             )
             assert resp.status_code == 202
             data = resp.json()
-            assert data["status"] == "processing"
+            assert data["status"] == "uploaded"
             job_id = data["job_id"]
             assert job_id
 
@@ -346,8 +343,6 @@ def test_ingest_commit(tmp_dirs):
         patch("meowdb.api.routers.ingest.STAGING_DIR", staging_dir),
         patch("meowdb.api.routers.ingest.WAV_DIR", wav_dir),
         patch("meowdb.api.routers.ingest.MP3_DIR", mp3_dir),
-        patch("meowdb.api.routers.ingest.DB_PATH", tmp_dirs["db"]),
-        patch("meowdb.api.routers.ingest._run_processor"),
         patch("meowdb.api.routers.audio.MP3_DIR", mp3_dir),
         patch("meowdb.api.routers.meows.WAV_DIR", wav_dir),
         patch("meowdb.api.routers.meows.MP3_DIR", mp3_dir),
@@ -392,3 +387,104 @@ def test_ingest_commit(tmp_dirs):
             data = commit_resp.json()
             assert len(data["meow_ids"]) == 1
             assert data["rejected_count"] == 0
+
+
+@pytest.mark.integration
+def test_stream_source_audio(client):
+    wav_bytes = _make_silent_wav_bytes()
+    resp = client.post(
+        "/api/ingest",
+        files={"file": ("test.wav", io.BytesIO(wav_bytes), "audio/wav")},
+    )
+    job_id = resp.json()["job_id"]
+
+    resp = client.get(f"/api/ingest/{job_id}/source")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("audio/")
+    assert len(resp.content) > 0
+
+
+@pytest.mark.integration
+def test_detect_regions(client):
+    wav_bytes = _make_silent_wav_bytes()
+    resp = client.post(
+        "/api/ingest",
+        files={"file": ("test.wav", io.BytesIO(wav_bytes), "audio/wav")},
+    )
+    job_id = resp.json()["job_id"]
+
+    resp = client.post(f"/api/ingest/{job_id}/detect")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "regions" in data
+    # Silent audio may return 0 regions — that's fine
+    assert isinstance(data["regions"], list)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_clip_and_commit(client):
+    wav_bytes = _make_silent_wav_bytes()
+    resp = client.post(
+        "/api/ingest",
+        files={"file": ("test.wav", io.BytesIO(wav_bytes), "audio/wav")},
+    )
+    job_id = resp.json()["job_id"]
+
+    # Clip a region from the uploaded file (default audio is 1 second)
+    resp = client.post(
+        f"/api/ingest/{job_id}/clip",
+        json={"regions": [{"start_ms": 0, "end_ms": 500}]},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["meow_ids"]) == 1
+    assert data["rejected_count"] == 0
+
+
+@pytest.mark.integration
+def test_clip_empty_regions_rejected(client):
+    wav_bytes = _make_silent_wav_bytes()
+    resp = client.post(
+        "/api/ingest",
+        files={"file": ("test.wav", io.BytesIO(wav_bytes), "audio/wav")},
+    )
+    job_id = resp.json()["job_id"]
+
+    resp = client.post(
+        f"/api/ingest/{job_id}/clip",
+        json={"regions": []},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.integration
+def test_clip_inverted_region_rejected(client):
+    wav_bytes = _make_silent_wav_bytes()
+    resp = client.post(
+        "/api/ingest",
+        files={"file": ("test.wav", io.BytesIO(wav_bytes), "audio/wav")},
+    )
+    job_id = resp.json()["job_id"]
+
+    resp = client.post(
+        f"/api/ingest/{job_id}/clip",
+        json={"regions": [{"start_ms": 500, "end_ms": 100}]},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.integration
+def test_clip_negative_region_rejected(client):
+    wav_bytes = _make_silent_wav_bytes()
+    resp = client.post(
+        "/api/ingest",
+        files={"file": ("test.wav", io.BytesIO(wav_bytes), "audio/wav")},
+    )
+    job_id = resp.json()["job_id"]
+
+    resp = client.post(
+        f"/api/ingest/{job_id}/clip",
+        json={"regions": [{"start_ms": -100, "end_ms": 500}]},
+    )
+    assert resp.status_code == 422

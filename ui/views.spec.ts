@@ -51,6 +51,23 @@ test.describe('MeowDB views', () => {
     await screenshot(page, testInfo, '04-ingest.png');
   });
 
+  test('ingest waveform clipping', async ({ page }, testInfo) => {
+    test.skip(!SCREENSHOTS_ENABLED, 'screenshots disabled');
+
+    const audioFile = path.resolve(__dirname, '..', 'Meow 1.m4a');
+    test.skip(!fs.existsSync(audioFile), 'audio fixture not available');
+
+    await page.goto('/upload', GOTO_OPTS);
+    await page.waitForSelector('.upload-zone', { state: 'visible' });
+
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles(audioFile);
+
+    await page.waitForSelector('#clip-waveform-container canvas', { state: 'visible', timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await screenshot(page, testInfo, '04b-ingest-waveform.png');
+  });
+
   test('stats dashboard', async ({ page }, testInfo) => {
     await page.goto('/stats', GOTO_OPTS);
     await page.waitForSelector('.stat-tile', { state: 'visible' });

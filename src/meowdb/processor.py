@@ -40,24 +40,16 @@ class MeowProcessor:
             start_ms = int(start_sample / sr * 1000)
             end_ms = int(end_sample / sr * 1000)
             slice_audio = audio[start_ms:end_ms]
-            processed = self._process_segment(slice_audio)
-
-            peak_dbfs = float(processed.dBFS)
-            wav_path, mp3_path = self._export_segment(processed, output_dir, f"{path.stem}_{i:03d}")
-            waveform = self._compute_waveform(processed)
-
             segments.append(
-                MeowSegment(
-                    index=i,
-                    source_path=path,
-                    start_ms=start_ms,
-                    end_ms=end_ms,
-                    duration_ms=end_ms - start_ms,
-                    cat_energy_ratio=ratio,
-                    peak_dbfs=peak_dbfs,
-                    wav_path=wav_path,
-                    mp3_path=mp3_path,
-                    waveform_data=waveform,
+                self._build_segment(
+                    slice_audio,
+                    i,
+                    path,
+                    start_ms,
+                    end_ms,
+                    output_dir,
+                    f"{path.stem}_{i:03d}",
+                    ratio,
                 )
             )
 
@@ -79,7 +71,7 @@ class MeowProcessor:
         ratio = cat_rms / (low_rms + 1e-10)
 
         processed = self._process_segment(audio)
-        peak_dbfs = float(processed.dBFS)
+        peak_dbfs = max(float(processed.dBFS), -100.0)
 
         output_dir = staging_dir or Path(f"/tmp/meowdb_{uuid.uuid4().hex}")
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -95,6 +87,70 @@ class MeowProcessor:
             end_ms=duration_ms,
             duration_ms=duration_ms,
             cat_energy_ratio=ratio,
+            peak_dbfs=peak_dbfs,
+            wav_path=wav_path,
+            mp3_path=mp3_path,
+            waveform_data=waveform,
+        )
+
+    def detect_only(self, path: Path) -> list[tuple[int, int]]:
+        audio, samples, sr = self._load(path)
+        cat_band, low_band = self._build_discriminator_signals(samples, sr)
+        candidates = self._detect_segments(cat_band, sr)
+        classified = self._classify_segments(candidates, cat_band, low_band)
+        padded = self._apply_padding(classified, len(samples), sr)
+        return [(int(s / sr * 1000), int(e / sr * 1000)) for s, e, _ in padded]
+
+    def process_clips(
+        self, path: Path, regions: list[tuple[int, int]], staging_dir: Path
+    ) -> list[MeowSegment]:
+        audio, samples, sr = self._load(path)
+        cat_band, low_band = self._build_discriminator_signals(samples, sr)
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        segments: list[MeowSegment] = []
+        for i, (start_ms, end_ms) in enumerate(regions):
+            start_sample = int(start_ms / 1000 * sr)
+            end_sample = int(end_ms / 1000 * sr)
+            cat_rms = float(np.sqrt(np.mean(cat_band[start_sample:end_sample] ** 2)))
+            low_rms = float(np.sqrt(np.mean(low_band[start_sample:end_sample] ** 2)))
+            ratio = cat_rms / (low_rms + 1e-10)
+            slice_audio = audio[start_ms:end_ms]
+            segments.append(
+                self._build_segment(
+                    slice_audio,
+                    i,
+                    path,
+                    start_ms,
+                    end_ms,
+                    staging_dir,
+                    f"clip_{i:03d}",
+                    ratio,
+                )
+            )
+        return segments
+
+    def _build_segment(
+        self,
+        audio_slice: AudioSegment,
+        index: int,
+        source_path: Path,
+        start_ms: int,
+        end_ms: int,
+        staging_dir: Path,
+        stem: str,
+        cat_energy_ratio: float,
+    ) -> MeowSegment:
+        processed = self._process_segment(audio_slice)
+        peak_dbfs = max(float(processed.dBFS), -100.0)
+        wav_path, mp3_path = self._export_segment(processed, staging_dir, stem)
+        waveform = self._compute_waveform(processed)
+        return MeowSegment(
+            index=index,
+            source_path=source_path,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            duration_ms=len(processed),
+            cat_energy_ratio=cat_energy_ratio,
             peak_dbfs=peak_dbfs,
             wav_path=wav_path,
             mp3_path=mp3_path,
@@ -317,6 +373,8 @@ class MeowProcessor:
 
     def _compute_waveform(self, audio: AudioSegment) -> list[float]:
         samples = self._audio_to_numpy(audio)
+        if len(samples) == 0:
+            return [0.0]
         sr = audio.frame_rate
         # ~100 samples/sec
         hop = max(1, sr // 100)

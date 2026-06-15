@@ -1,40 +1,45 @@
 /* ============================================================
-   views/ingest.js — Upload + review card-swipe Alpine component
+   views/ingest.js — Upload + waveform clipping Alpine component
    ============================================================ */
 
 function ingestView() {
   return {
-    // Phase: 'idle' | 'uploading' | 'processing' | 'review' | 'summary' | 'done'
+    // Phase: 'idle' | 'uploading' | 'clipping' | 'processing' | 'done'
     phase: 'idle',
     jobId: null,
-    segments: [],
-    currentIndex: 0,
-    decisions: {},   // segmentId → 'accept' | 'reject'
     statusMessage: '',
-    _pollTimer: null,
     isDragOver: false,
 
     // Recording state
     isRecording: false,
     recordSeconds: 0,
+    _recordInterval: null,
 
-    // Swipe state
-    _touchStartX: 0,
-    _touchStartY: 0,
-    _dragX: 0,
-    _isSwiping: false,
+    // Reset-in-progress guard (prevents in-flight uploads from writing phase/jobId)
+    _resetting: false,
+
+    // WaveSurfer state
+    _wavesurfer: null,
+    _regionsPlugin: null,
+    _wavesurferLoaded: false,
+    isAutoDetecting: false,
+    regionCount: 0,
 
     /* ──────────────────────────────────────────────────────
        Lifecycle
     ────────────────────────────────────────────────────── */
 
     init() {
-      micRecorder.onTick = (s) => { this.recordSeconds = s; };
-      micRecorder.onStop = (blob) => { this._uploadBlob(blob); };
+      try {
+        micRecorder.onTick = (s) => { this.recordSeconds = s; };
+        micRecorder.onStop = (blob) => { this._uploadBlob(blob); };
+      } catch (e) {
+        console.error('ingestView init error:', e);
+      }
     },
 
     destroy() {
-      this._stopPoll();
+      this._destroyWaveSurfer();
     },
 
     /* ──────────────────────────────────────────────────────
@@ -65,14 +70,15 @@ function ingestView() {
     },
 
     async _uploadFile(file) {
+      if (this._resetting) return;
       this.phase = 'uploading';
       this.statusMessage = 'Uploading…';
       try {
         const job = await createIngestJob(file);
         this.jobId = job.job_id;
-        this.phase = 'processing';
-        this.statusMessage = 'Extracting meows…';
-        this._startPoll();
+        this.phase = 'clipping';
+        await this._ensureWaveSurfer();
+        this.$nextTick(() => this._initWaveSurfer());
       } catch (err) {
         this.phase = 'idle';
         showToast(err.message || 'Upload failed', 'error');
@@ -113,235 +119,129 @@ function ingestView() {
     },
 
     /* ──────────────────────────────────────────────────────
-       Polling
+       WaveSurfer
     ────────────────────────────────────────────────────── */
 
-    _startPoll() {
-      this._pollTimer = setInterval(async () => {
-        try {
-          const job = await getIngestJob(this.jobId);
-          if (job.status === 'ready') {
-            this._stopPoll();
-            if (!job.segments || job.segments.length === 0) {
-              this.phase = 'idle';
-              showToast('No meows found in this recording', 'info');
-              return;
-            }
-            this.segments = job.segments;
-            this.currentIndex = 0;
-            this.decisions = {};
-            this.phase = 'review';
-            this._nextTick_drawCard();
-          } else if (job.status === 'failed') {
-            this._stopPoll();
-            this.phase = 'idle';
-            showToast('Processing failed — try another file', 'error');
-          }
-        } catch (err) {
-          this._stopPoll();
-          this.phase = 'idle';
-          showToast(err.message || 'Status check failed', 'error');
-        }
-      }, 600);
+    async _ensureWaveSurfer() {
+      if (this._wavesurferLoaded) return;
+      await this._loadScript('/static/vendor/wavesurfer.min.js');
+      await this._loadScript('/static/vendor/wavesurfer-regions.min.js');
+      this._wavesurferLoaded = true;
     },
 
-    _stopPoll() {
-      if (this._pollTimer) {
-        clearInterval(this._pollTimer);
-        this._pollTimer = null;
-      }
-    },
-
-    /* ──────────────────────────────────────────────────────
-       Review: current card helpers
-    ────────────────────────────────────────────────────── */
-
-    get currentSegment() {
-      return this.segments[this.currentIndex] || null;
-    },
-
-    get reviewProgress() {
-      if (!this.segments.length) return 0;
-      return this.currentIndex / this.segments.length;
-    },
-
-    get reviewLabel() {
-      return `${this.currentIndex + 1} of ${this.segments.length}`;
-    },
-
-    get acceptedCount() {
-      return Object.values(this.decisions).filter((d) => d === 'accept').length;
-    },
-
-    get rejectedCount() {
-      return Object.values(this.decisions).filter((d) => d === 'reject').length;
-    },
-
-    _nextTick_drawCard() {
-      this.$nextTick(() => {
-        const seg = this.currentSegment;
-        if (!seg) return;
-        const canvas = document.getElementById('review-waveform');
-        if (canvas && seg.waveform) {
-          drawWaveform(canvas, seg.waveform, '#ff6b6b', 1);
-        }
+    _loadScript(src) {
+      if (document.querySelector(`script[src="${src}"]`)) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
       });
     },
 
-    async playCurrentSegment() {
-      const seg = this.currentSegment;
-      if (!seg) return;
-      audioPlayer.stop();
+    _initWaveSurfer() {
+      const container = document.getElementById('clip-waveform-container');
+      if (!container) return;
+
+      this._regionsPlugin = WaveSurfer.Regions.create();
+      this._wavesurfer = WaveSurfer.create({
+        container,
+        waveColor: 'var(--border-strong)',
+        progressColor: 'var(--accent)',
+        cursorColor: 'var(--accent)',
+        barWidth: 2,
+        barGap: 1,
+        height: 120,
+        normalize: true,
+        interact: true,
+        url: sourceAudioUrl(this.jobId),
+        plugins: [this._regionsPlugin],
+      });
+
+      this._regionsPlugin.enableDragSelection({ color: 'rgba(255, 107, 107, 0.25)' });
+
+      this._regionsPlugin.on('region-created', () => {
+        this.regionCount = this._regionsPlugin.getRegions().length;
+      });
+      this._regionsPlugin.on('region-removed', () => {
+        this.regionCount = this._regionsPlugin.getRegions().length;
+      });
+    },
+
+    _destroyWaveSurfer() {
+      if (this._wavesurfer) {
+        try { this._wavesurfer.destroy(); } catch {}
+        this._wavesurfer = null;
+        this._regionsPlugin = null;
+      }
+    },
+
+    togglePlayPause() {
+      if (this._wavesurfer) this._wavesurfer.playPause();
+    },
+
+    async autoDetect() {
+      this.isAutoDetecting = true;
       try {
-        await audioPlayer.play(segmentAudioUrl(this.jobId, seg.id));
+        const result = await detectRegions(this.jobId);
+        this._regionsPlugin.clearRegions();
+        for (const r of result.regions) {
+          this._regionsPlugin.addRegion({
+            start: r.start_ms / 1000,
+            end: r.end_ms / 1000,
+            color: 'rgba(255, 107, 107, 0.25)',
+            drag: true,
+            resize: true,
+          });
+        }
+        this.regionCount = this._regionsPlugin.getRegions().length;
+        if (this.regionCount === 0) {
+          showToast('No meows detected — draw regions manually', 'info');
+        }
       } catch (err) {
-        showToast('Playback error', 'error');
+        showToast(err.message || 'Auto-detect failed', 'error');
+      } finally {
+        this.isAutoDetecting = false;
       }
     },
 
-    /* ──────────────────────────────────────────────────────
-       Accept / Reject
-    ────────────────────────────────────────────────────── */
-
-    acceptCurrent() {
-      this._decide('accept');
-    },
-
-    rejectCurrent() {
-      this._decide('reject');
-    },
-
-    _decide(decision) {
-      const seg = this.currentSegment;
-      if (!seg) return;
-      audioPlayer.stop();
-      this.decisions[seg.id] = decision;
-      this._animateCard(decision, () => this._advance());
-    },
-
-    _advance() {
-      const next = this.currentIndex + 1;
-      if (next >= this.segments.length) {
-        this.phase = 'summary';
-      } else {
-        this.currentIndex = next;
-        this._resetCardTransform();
-        this._nextTick_drawCard();
+    async saveClips() {
+      const regions = this._regionsPlugin.getRegions();
+      if (regions.length === 0) {
+        showToast('Draw at least one region first', 'info');
+        return;
       }
-    },
+      const regionData = regions.map((r) => ({
+        start_ms: Math.round(r.start * 1000),
+        end_ms: Math.round(r.end * 1000),
+      }));
+      regionData.sort((a, b) => a.start_ms - b.start_ms);
 
-    _animateCard(decision, callback) {
-      const card = document.getElementById('review-card');
-      if (!card) { callback(); return; }
-
-      const cls = decision === 'accept' ? 'accept-anim' : 'reject-anim';
-      card.classList.add(cls);
-      card.addEventListener('animationend', () => {
-        card.classList.remove(cls);
-        callback();
-      }, { once: true });
-    },
-
-    _resetCardTransform() {
-      const card = document.getElementById('review-card');
-      if (card) card.style.transform = '';
-    },
-
-    /* ──────────────────────────────────────────────────────
-       Swipe gestures
-    ────────────────────────────────────────────────────── */
-
-    onTouchStart(e) {
-      if (e.touches.length !== 1) return;
-      this._touchStartX = e.touches[0].clientX;
-      this._touchStartY = e.touches[0].clientY;
-      this._dragX = 0;
-      this._isSwiping = false;
-      const card = document.getElementById('review-card');
-      if (card) card.classList.add('swiping');
-    },
-
-    onTouchMove(e) {
-      if (e.touches.length !== 1) return;
-      const dx = e.touches[0].clientX - this._touchStartX;
-      const dy = e.touches[0].clientY - this._touchStartY;
-
-      // Ignore if scrolling vertically
-      if (!this._isSwiping && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) return;
-      this._isSwiping = true;
-      e.preventDefault();
-
-      this._dragX = dx;
-      const rotate = dx * 0.06;
-      const card = document.getElementById('review-card');
-      if (card) card.style.transform = `translateX(${dx}px) rotate(${rotate}deg)`;
-
-      // Show hint overlays
-      const threshold = 40;
-      const acceptHint = document.getElementById('hint-accept');
-      const rejectHint = document.getElementById('hint-reject');
-      if (acceptHint) acceptHint.style.opacity = dx >  threshold ? Math.min(1, (dx - threshold) / 40).toString() : '0';
-      if (rejectHint) rejectHint.style.opacity = dx < -threshold ? Math.min(1, (-dx - threshold) / 40).toString() : '0';
-    },
-
-    onTouchEnd() {
-      const card = document.getElementById('review-card');
-      if (card) card.classList.remove('swiping');
-
-      // Reset hint overlays
-      const acceptHint = document.getElementById('hint-accept');
-      const rejectHint = document.getElementById('hint-reject');
-      if (acceptHint) acceptHint.style.opacity = '0';
-      if (rejectHint) rejectHint.style.opacity = '0';
-
-      const THRESHOLD = 80;
-      if (this._dragX >  THRESHOLD) {
-        this._decide('accept');
-      } else if (this._dragX < -THRESHOLD) {
-        this._decide('reject');
-      } else {
-        // Spring back
-        this._resetCardTransform();
-      }
-
-      this._dragX = 0;
-      this._isSwiping = false;
-    },
-
-    /* ──────────────────────────────────────────────────────
-       Commit
-    ────────────────────────────────────────────────────── */
-
-    async commitJob() {
-      const accepted = Object.entries(this.decisions)
-        .filter(([, v]) => v === 'accept')
-        .map(([k]) => k);
-      const rejected = Object.entries(this.decisions)
-        .filter(([, v]) => v === 'reject')
-        .map(([k]) => k);
-
-      this.phase = 'uploading';
-      this.statusMessage = `Saving ${accepted.length} meow${accepted.length !== 1 ? 's' : ''}…`;
+      this.phase = 'processing';
+      this.statusMessage = 'Processing ' + regions.length + ' clip' + (regions.length !== 1 ? 's' : '') + '…';
 
       try {
-        const result = await commitJob(this.jobId, accepted, rejected);
+        const result = await clipAndCommit(this.jobId, regionData);
+        this._destroyWaveSurfer();
         this.phase = 'done';
-        showToast(`Saved ${result.meow_ids.length} meow${result.meow_ids.length !== 1 ? 's' : ''} 🐱`, 'success');
+        showToast('Saved ' + result.meow_ids.length + ' meow' + (result.meow_ids.length !== 1 ? 's' : ''), 'success');
       } catch (err) {
-        this.phase = 'summary';
-        showToast(err.message || 'Commit failed', 'error');
+        this.phase = 'clipping';
+        showToast(err.message || 'Save failed', 'error');
       }
     },
 
     reset() {
-      this._stopPoll();
+      this._resetting = true;
+      if (this.isRecording) this.stopRecording();
+      this._destroyWaveSurfer();
+      this.regionCount = 0;
       audioPlayer.stop();
       this.phase = 'idle';
       this.jobId = null;
-      this.segments = [];
-      this.currentIndex = 0;
-      this.decisions = {};
       this.statusMessage = '';
+      this._resetting = false;
     },
 
     /* ──────────────────────────────────────────────────────
@@ -351,3 +251,4 @@ function ingestView() {
     formatDuration(ms) { return MeowUtils.formatDuration(ms); },
   };
 }
+
