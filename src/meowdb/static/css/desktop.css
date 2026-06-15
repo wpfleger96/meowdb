@@ -64,6 +64,7 @@
   }
 
   .nav-tab {
+    flex: none;
     flex-direction: row;
     justify-content: flex-start;
     gap: var(--sp-3);
