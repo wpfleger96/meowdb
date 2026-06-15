@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { test, Page, TestInfo } from '@playwright/test';
+import { test, expect, Page, TestInfo } from '@playwright/test';
 
 const SCREENSHOTS_DIR = path.resolve(__dirname, 'screenshots');
 const SCREENSHOTS_ENABLED = process.env.SCREENSHOTS === 'true';
@@ -21,6 +21,11 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string): Promise
   });
 }
 
+function isDesktop(page: Page): boolean {
+  const vp = page.viewportSize();
+  return vp !== null && vp.width >= 768;
+}
+
 const GOTO_OPTS = { waitUntil: 'networkidle' as const };
 
 test.describe('MeowDB views', () => {
@@ -28,6 +33,21 @@ test.describe('MeowDB views', () => {
     await page.goto('/', GOTO_OPTS);
     await page.waitForSelector('.meow-btn', { state: 'visible' });
     await screenshot(page, testInfo, '01-play.png');
+  });
+
+  test('navigation layout', async ({ page }) => {
+    await page.goto('/', GOTO_OPTS);
+    const nav = page.locator('.bottom-nav');
+    const box = await nav.boundingBox();
+    if (isDesktop(page)) {
+      // Sidebar: pinned to left edge, 220px wide, full-height
+      expect(box?.x).toBe(0);
+      expect(box?.width).toBe(220);
+    } else {
+      // Bottom bar: full-width, pinned to bottom
+      const vp = page.viewportSize()!;
+      expect(box?.width).toBe(vp.width);
+    }
   });
 
   test('library list', async ({ page }, testInfo) => {
@@ -43,12 +63,30 @@ test.describe('MeowDB views', () => {
     await page.waitForSelector('.modal-sheet', { state: 'visible' });
     await page.waitForTimeout(200);
     await screenshot(page, testInfo, '03-library-detail.png');
+
+    if (isDesktop(page)) {
+      const vp = page.viewportSize()!;
+      // Library list shifts to make room for the side panel
+      await expect(page.locator('.library-view')).toHaveClass(/detail-open/);
+      // Sheet fills full height (not a short bottom sheet)
+      const sheet = await page.locator('.modal-sheet').boundingBox();
+      expect(sheet!.height).toBeGreaterThan(vp.height / 2);
+    }
   });
 
   test('ingest upload', async ({ page }, testInfo) => {
     await page.goto('/upload', GOTO_OPTS);
     await page.waitForSelector('.upload-zone', { state: 'visible' });
     await screenshot(page, testInfo, '04-ingest.png');
+
+    if (isDesktop(page)) {
+      // Upload zone and record section are side-by-side: different x positions
+      const uploadBox = await page.locator('.upload-zone').boundingBox();
+      const recordBox = await page.locator('.record-section').boundingBox();
+      expect(uploadBox!.x).toBeLessThan(recordBox!.x);
+      // "or" divider is hidden
+      await expect(page.locator('.ingest-or-divider')).toBeHidden();
+    }
   });
 
   test('ingest waveform clipping', async ({ page }, testInfo) => {
@@ -72,5 +110,15 @@ test.describe('MeowDB views', () => {
     await page.goto('/stats', GOTO_OPTS);
     await page.waitForSelector('.stat-tile', { state: 'visible' });
     await screenshot(page, testInfo, '05-stats.png');
+
+    if (isDesktop(page)) {
+      const tiles = await page.locator('.stat-tile').all();
+      const boxes = await Promise.all(tiles.map((t) => t.boundingBox()));
+      // All 4 tiles should be in the same row (same y, different x)
+      expect(boxes[0]!.y).toBeCloseTo(boxes[3]!.y, -1);
+      expect(boxes[0]!.x).toBeLessThan(boxes[1]!.x);
+      expect(boxes[1]!.x).toBeLessThan(boxes[2]!.x);
+      expect(boxes[2]!.x).toBeLessThan(boxes[3]!.x);
+    }
   });
 });
