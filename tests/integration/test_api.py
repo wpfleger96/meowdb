@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import shutil
 import struct
 import warnings
 import wave
@@ -421,6 +422,7 @@ def test_detect_regions(client):
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
 def test_clip_and_commit(client):
     wav_bytes = _make_silent_wav_bytes()
     resp = client.post(
