@@ -9,6 +9,7 @@ just test              # Unit + integration tests (excludes e2e)
 just test-unit         # Unit tests only
 just test-integration  # Integration tests only
 just e2e               # Playwright E2E tests (views render correctly, local.just)
+just ci                # Full CI pipeline: type-check + lint-check + format-check + test
 just lint              # Auto-fix lint issues
 just format            # Auto-fix formatting
 just serve             # Start server on :8000 (local.just)
@@ -73,6 +74,7 @@ patch("meowdb.api.app.MP3_DIR", tmp_mp3)
 ## Testing
 
 - `just test` runs unit + integration (99 tests, 75% coverage)
+- `uv run pytest tests/unit/test_db.py` runs a single file
 - Processor tests skip without ffmpeg: `@pytest.mark.skipif(shutil.which("ffmpeg") is None)`
 - E2e tests skip without local audio files
 - Integration tests need `_make_silent_wav_bytes()` for real file fixtures
@@ -87,6 +89,9 @@ patch("meowdb.api.app.MP3_DIR", tmp_mp3)
 3. **CORS port** -- `app.py` allows `:8000` only. Screenshot tests use `:8001` (same-origin, CORS irrelevant)
 4. **`x-if` vs `x-show`** -- play view uses `<template x-if="meowCount > 0">` which removes DOM elements entirely until condition is true. Don't wait for elements inside `x-if` until the async data has loaded
 5. **Upload size** -- capped at 500MB with chunked streaming. `await file.read()` is prohibited
+6. **`get_job` segments key** -- `GET /ingest/jobs/{id}` only includes `segments` when `status == "ready"`. Accessing `job["segments"]` before that raises `KeyError`
+7. **`MeowProcessor` is sync** -- always wrap in `run_in_threadpool` when calling from an async route; calling it directly blocks the event loop
+8. **Playwright E2E setup** -- `just e2e` requires `npm ci` inside `ui/` first; `seed.py` raises `RuntimeError` if `MEOWDB_DATA_DIR` is not set
 
 ## Key Files by Task
 
