@@ -152,8 +152,14 @@ function ingestView() {
       const container = document.getElementById('clip-waveform-container');
       if (!container) return;
 
-      this._regionsPlugin = WaveSurfer.Regions.create();
-      this._wavesurfer = WaveSurfer.create({
+      // Mark WaveSurfer objects as non-observable before assigning to `this` so
+      // Alpine's deep-proxy doesn't wrap them. Proxied WaveSurfer objects break
+      // internal identity comparisons (region filter on remove, etc.).
+      const regionsPlugin = WaveSurfer.Regions.create();
+      regionsPlugin.__v_skip = true;
+      this._regionsPlugin = regionsPlugin;
+
+      const ws = WaveSurfer.create({
         container,
         waveColor: 'var(--border-strong)',
         progressColor: 'var(--accent)',
@@ -166,13 +172,15 @@ function ingestView() {
         scrollParent: true,
         url: sourceAudioUrl(this.jobId),
         plugins: [
-          this._regionsPlugin,
+          regionsPlugin,
           WaveSurfer.Timeline.create({
             height: 20,
             style: { color: 'var(--text-secondary)', fontSize: '10px' },
           }),
         ],
       });
+      ws.__v_skip = true;
+      this._wavesurfer = ws;
 
       this._wavesurfer.on('ready', () => {
         const duration = this._wavesurfer.getDuration();
