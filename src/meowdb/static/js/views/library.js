@@ -292,5 +292,12 @@ function libraryView() {
     formatDuration(ms) { return MeowUtils.formatDuration(ms); },
     formatDate(iso) { return MeowUtils.formatDate(iso); },
     formatId(id) { return MeowUtils.formatId(id); },
+
+    uniquenessBadgeClass(score) {
+      if (score == null) return 'badge-default';
+      if (score >= 70) return 'badge-green';
+      if (score >= 30) return 'badge-accent';
+      return 'badge-default';
+    },
   };
 }

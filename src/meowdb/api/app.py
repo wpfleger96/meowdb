@@ -15,7 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from meowdb.api import auth
-from meowdb.api.routers import audio, ingest, meows, photos, stats
+from meowdb.api.routers import audio, ingest, meows, photos, stats, uniqueness
 from meowdb.config import (
     _DEFAULT_SESSION_SECRET,
     CORS_ORIGINS,
@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         SessionMiddleware,
         secret_key=SESSION_SECRET,
-        max_age=14 * 24 * 3600,
+        max_age=7 * 24 * 3600,
         https_only=not IS_LOCALHOST,
         same_site="lax",
     )
@@ -93,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(audio.router, prefix="/api")
     app.include_router(stats.router, prefix="/api")
     app.include_router(photos.router, prefix="/api")
+    app.include_router(uniqueness.router, prefix="/api")
 
     @app.get("/health", include_in_schema=False, response_model=None)
     async def health(request: Request) -> JSONResponse:

@@ -15,6 +15,7 @@ class MeowResponse(BaseModel):
     waveform_data: list[float] = []
     recorded_at: str | None = None
     title: str | None = None
+    uniqueness_score: float | None = None
 
 
 class MeowListResponse(BaseModel):
@@ -76,6 +77,7 @@ class StatsResponse(BaseModel):
     most_played: list[MeowSummary]
     recent: list[MeowSummary]
     label_counts: dict[str, int]
+    first_meow_at: str | None = None
 
 
 class LabelResponse(BaseModel):
@@ -119,3 +121,8 @@ class PhotoResponse(BaseModel):
 
 class PhotoListResponse(BaseModel):
     items: list[PhotoResponse]
+
+
+class RecalculateResponse(BaseModel):
+    updated_count: int
+    elapsed_seconds: float

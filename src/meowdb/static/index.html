@@ -135,6 +135,7 @@
             <option value="most_played">Most played</option>
             <option value="duration_asc">Shortest</option>
             <option value="duration_desc">Longest</option>
+            <option value="most_unique">Most unique</option>
           </select>
         </div>
 
@@ -198,6 +199,12 @@
                 <div class="list-row-title" x-text="'Meow ' + formatId(meow.id)"></div>
                 <div class="list-row-meta">
                   <span class="badge badge-default" x-text="formatDuration(meow.duration_ms)"></span>
+                  <span
+                    class="badge"
+                    :class="uniquenessBadgeClass(meow.uniqueness_score)"
+                    x-show="meow.uniqueness_score != null"
+                    x-text="Math.round(meow.uniqueness_score) + '% unique'"
+                  ></span>
                   <span x-text="formatDate(meow.created_at)"></span>
                   <span x-show="meow.play_count > 0" x-text="meow.play_count + ' plays'"></span>
                   <template x-for="label in (meow.labels || []).slice(0, 2)" :key="label">
@@ -299,6 +306,13 @@
               <div class="detail-meta-item">
                 <span class="detail-meta-label">Plays</span>
                 <span class="detail-meta-value" x-text="detailMeow?.play_count ?? 0"></span>
+              </div>
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">Uniqueness</span>
+                <span
+                  class="detail-meta-value"
+                  x-text="detailMeow?.uniqueness_score != null ? Math.round(detailMeow.uniqueness_score) + '%' : '—'"
+                ></span>
               </div>
               <div class="detail-meta-item">
                 <span class="detail-meta-label">ID</span>

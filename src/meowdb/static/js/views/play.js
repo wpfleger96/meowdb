@@ -13,6 +13,7 @@ function playView() {
 
     async init() {
       await this._refreshCount();
+      getRandomPhoto().then(photo => { this.currentPhoto = photo; }).catch(() => {});
     },
 
     async _refreshCount() {

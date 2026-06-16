@@ -7,6 +7,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
@@ -23,6 +25,28 @@ from meowdb.api.models import (
 )
 from meowdb.api.streaming import safe_path, stream_file
 from meowdb.config import MP3_DIR, STAGING_DIR, WAV_DIR
+from meowdb.similarity import MeowSimilarity
+
+_similarity = MeowSimilarity()
+
+
+def _update_uniqueness_after_ingest(db: Any, new_meow_ids: list[str]) -> None:
+    """Extract fingerprints for newly committed meows, then recompute all scores."""
+    all_rows = {r["id"]: r["wav_path"] for r in db.get_all_wav_paths()}
+    fingerprints = db.get_all_fingerprints()
+
+    for meow_id in new_meow_ids:
+        if meow_id not in fingerprints and meow_id in all_rows:
+            try:
+                fp = _similarity.extract_fingerprint(all_rows[meow_id])
+                db.update_fingerprint(meow_id, fp)
+                fingerprints[meow_id] = fp
+            except Exception:
+                pass
+
+    if fingerprints:
+        scores = _similarity.compute_uniqueness_scores(fingerprints)
+        db.update_uniqueness_scores_bulk(scores)
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
@@ -186,6 +210,9 @@ async def commit_ingest_job(
         except OSError:
             logger.warning("Failed to remove staging dir %s", job_staging_dir)
 
+    if meow_ids:
+        await run_in_threadpool(_update_uniqueness_after_ingest, db, meow_ids)
+
     return CommitResponse(meow_ids=meow_ids, rejected_count=len(body.rejected_ids))
 
 
@@ -283,4 +310,8 @@ async def clip_and_commit(job_id: str, body: ClipRequest, request: Request) -> C
     segment_ids = db.get_segment_ids(job_id)
     meow_ids = db.commit_job(job_id, segment_ids, [], WAV_DIR, MP3_DIR, recorded_at=recorded_at)
     shutil.rmtree(staging_dir, ignore_errors=True)
+
+    if meow_ids:
+        await run_in_threadpool(_update_uniqueness_after_ingest, db, meow_ids)
+
     return CommitResponse(meow_ids=meow_ids, rejected_count=0)
