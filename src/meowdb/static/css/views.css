@@ -681,6 +681,7 @@
   border-radius: var(--radius-md);
   overflow: hidden;
   min-height: 128px;
+  min-width: 0;
 }
 
 .clip-transport {
