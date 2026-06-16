@@ -1,4 +1,4 @@
-const CACHE_NAME = 'meowdb-v1';
+const CACHE_NAME = 'meowdb-v2';
 
 const APP_SHELL = [
   '/',
@@ -15,6 +15,7 @@ const APP_SHELL = [
   '/static/js/views/library.js',
   '/static/js/views/ingest.js',
   '/static/js/views/stats.js',
+  '/static/js/views/photos.js',
   '/static/vendor/alpine.min.js',
 ];
 
@@ -55,14 +56,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: cache-first, fall back to network
+  // Static assets: network-first so deploys take effect immediately
   if (url.pathname.startsWith('/static/')) {
-    event.respondWith(cacheFirstWithNetwork(request));
+    event.respondWith(networkFirstWithCache(request));
     return;
   }
 
-  // SPA shell and all other HTML routes: cache-first
-  event.respondWith(cacheFirstWithNetwork(request));
+  // SPA shell and all other HTML routes: network-first
+  event.respondWith(networkFirstWithCache(request));
 });
 
 async function networkFirstWithCache(request) {
