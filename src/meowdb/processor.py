@@ -125,6 +125,7 @@ class MeowProcessor:
                     staging_dir,
                     f"clip_{i:03d}",
                     ratio,
+                    skip_processing=True,
                 )
             )
         return segments
@@ -139,8 +140,9 @@ class MeowProcessor:
         staging_dir: Path,
         stem: str,
         cat_energy_ratio: float,
+        skip_processing: bool = False,
     ) -> MeowSegment:
-        processed = self._process_segment(audio_slice)
+        processed = audio_slice if skip_processing else self._process_segment(audio_slice)
         peak_dbfs = max(float(processed.dBFS), -100.0)
         wav_path, mp3_path = self._export_segment(processed, staging_dir, stem)
         waveform = self._compute_waveform(processed)
