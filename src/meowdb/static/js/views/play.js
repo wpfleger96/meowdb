@@ -117,6 +117,13 @@ function playView() {
       }
     },
 
+    uniquenessBadgeClass(score) {
+      if (score == null) return 'badge-default';
+      if (score >= 75) return 'badge-green';
+      if (score >= 50) return 'badge-yellow';
+      return 'badge-red';
+    },
+
     /** Navigate to the upload view */
     goToUpload() {
       navigateTo('/upload');

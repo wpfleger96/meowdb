@@ -305,9 +305,9 @@ function libraryView() {
 
     uniquenessBadgeClass(score) {
       if (score == null) return 'badge-default';
-      if (score >= 70) return 'badge-green';
-      if (score >= 30) return 'badge-accent';
-      return 'badge-default';
+      if (score >= 75) return 'badge-green';
+      if (score >= 50) return 'badge-yellow';
+      return 'badge-red';
     },
   };
 }

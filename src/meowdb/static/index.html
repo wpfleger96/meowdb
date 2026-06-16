@@ -92,6 +92,15 @@
               aria-hidden="true"
             ></canvas>
 
+            <!-- Uniqueness badge (shown when current meow has a score) -->
+            <div x-show="currentMeow?.uniqueness_score != null" style="min-height:1.5rem;">
+              <span
+                class="badge"
+                :class="uniquenessBadgeClass(currentMeow?.uniqueness_score)"
+                x-text="Math.round(currentMeow?.uniqueness_score ?? 0) + '% unique'"
+              ></span>
+            </div>
+
             <!-- Meow count -->
             <p class="meow-counter" x-show="meowCount > 0">
               <strong x-text="meowCount"></strong>
