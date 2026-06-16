@@ -75,6 +75,16 @@ function libraryView() {
       await this._loadMeows(true);
     },
 
+    async recalculate() {
+      try {
+        const result = await recalculateUniqueness({ force: true });
+        showToast(`Uniqueness updated (${result.updated_count} fingerprints computed)`, 'success');
+        await this._loadMeows(true);
+      } catch (err) {
+        showToast(err.message || 'Recalculation failed', 'error');
+      }
+    },
+
     async toggleLabelFilter(label) {
       if (this.filterLabel === label) {
         this.filterLabel = '';
@@ -292,5 +302,12 @@ function libraryView() {
     formatDuration(ms) { return MeowUtils.formatDuration(ms); },
     formatDate(iso) { return MeowUtils.formatDate(iso); },
     formatId(id) { return MeowUtils.formatId(id); },
+
+    uniquenessBadgeClass(score) {
+      if (score == null) return 'badge-default';
+      if (score >= 75) return 'badge-green';
+      if (score >= 50) return 'badge-yellow';
+      return 'badge-red';
+    },
   };
 }

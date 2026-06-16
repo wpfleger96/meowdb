@@ -286,3 +286,16 @@ async function uploadPhoto(file) {
 async function deletePhoto(id) {
   return apiFetch(`/photos/${id}`, { method: 'DELETE' });
 }
+
+/* ============================================================
+   Uniqueness
+   ============================================================ */
+
+/**
+ * @param {{ force?: boolean }} [opts]
+ * @returns {Promise<{ updated_count: number, elapsed_seconds: number }>}
+ */
+async function recalculateUniqueness({ force = false } = {}) {
+  const qs = force ? '?force=true' : '';
+  return apiFetch(`/uniqueness/recalculate${qs}`, { method: 'POST' });
+}

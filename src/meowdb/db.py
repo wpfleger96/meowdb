@@ -67,6 +67,7 @@ _SORT_MAP = {
     "most_played": "play_count DESC, rowid DESC",
     "duration_asc": "duration_ms ASC, rowid ASC",
     "duration_desc": "duration_ms DESC, rowid DESC",
+    "most_unique": "uniqueness_score DESC, rowid DESC",
 }
 
 
@@ -87,7 +88,12 @@ class MeowDB:
             "CREATE INDEX IF NOT EXISTS idx_meows_play_count ON meows(play_count DESC)"
         )
         self._conn.commit()
-        for col, typedef in [("recorded_at", "TEXT"), ("title", "TEXT")]:
+        for col, typedef in [
+            ("recorded_at", "TEXT"),
+            ("title", "TEXT"),
+            ("meow_fingerprint", "TEXT"),
+            ("uniqueness_score", "REAL"),
+        ]:
             try:
                 self._conn.execute(f"ALTER TABLE meows ADD COLUMN {col} {typedef}")
             except sqlite3.OperationalError:
@@ -345,13 +351,12 @@ class MeowDB:
                 if seg is None:
                     continue
 
+                meow_id = str(uuid.uuid4())
                 src_wav = Path(seg["wav_path"])
-                dst_wav = wav_dir / src_wav.name
-                dst_mp3 = mp3_dir / src_wav.with_suffix(".mp3").name
+                dst_wav = wav_dir / f"{meow_id}.wav"
+                dst_mp3 = mp3_dir / f"{meow_id}.mp3"
                 shutil.move(str(src_wav), dst_wav)
                 shutil.move(str(src_wav.with_suffix(".mp3")), dst_mp3)
-
-                meow_id = str(uuid.uuid4())
                 self._conn.execute(
                     """
                     INSERT INTO meows
@@ -412,7 +417,8 @@ class MeowDB:
             SELECT
                 COUNT(*) AS total_meows,
                 COALESCE(SUM(duration_ms), 0) AS total_duration_ms,
-                COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
+                COALESCE(AVG(duration_ms), 0) AS avg_duration_ms,
+                MIN(created_at) AS first_meow_at
             FROM meows
             """
         ).fetchone()
@@ -435,6 +441,7 @@ class MeowDB:
             "total_meows": agg["total_meows"],
             "total_duration_ms": agg["total_duration_ms"],
             "avg_duration_ms": agg["avg_duration_ms"],
+            "first_meow_at": agg["first_meow_at"],
             "most_played": most_played,
             "recent": recent,
             "label_counts": self._count_labels(),
@@ -487,3 +494,35 @@ class MeowDB:
         cursor = self._conn.execute("DELETE FROM cat_photos WHERE id = ?", (photo_id,))
         self._conn.commit()
         return cursor.rowcount > 0
+
+    # -------------------------------------------------------------------------
+    # Meow fingerprints and uniqueness scores
+    # -------------------------------------------------------------------------
+
+    def update_fingerprint(self, meow_id: str, fingerprint: list[float]) -> None:
+        self._conn.execute(
+            "UPDATE meows SET meow_fingerprint = ? WHERE id = ?",
+            (json.dumps(fingerprint), meow_id),
+        )
+        self._conn.commit()
+
+    def update_uniqueness_scores_bulk(self, scores: dict[str, float]) -> None:
+        self._conn.executemany(
+            "UPDATE meows SET uniqueness_score = ? WHERE id = ?",
+            [(score, meow_id) for meow_id, score in scores.items()],
+        )
+        self._conn.commit()
+
+    def get_all_fingerprints(self) -> dict[str, list[float]]:
+        rows = self._conn.execute(
+            "SELECT id, meow_fingerprint FROM meows WHERE meow_fingerprint IS NOT NULL"
+        ).fetchall()
+        return {
+            row["id"]: json.loads(row["meow_fingerprint"])
+            for row in rows
+            if row["meow_fingerprint"]
+        }
+
+    def get_all_wav_paths(self) -> list[dict]:  # type: ignore[type-arg]
+        rows = self._conn.execute("SELECT id, wav_path FROM meows").fetchall()
+        return [dict(r) for r in rows]

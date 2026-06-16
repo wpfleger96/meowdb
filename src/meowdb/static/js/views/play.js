@@ -13,6 +13,7 @@ function playView() {
 
     async init() {
       await this._refreshCount();
+      getRandomPhoto().then(photo => { this.currentPhoto = photo; }).catch(() => {});
     },
 
     async _refreshCount() {
@@ -114,6 +115,13 @@ function playView() {
         this._cancelWaveform();
         this._cancelWaveform = null;
       }
+    },
+
+    uniquenessBadgeClass(score) {
+      if (score == null) return 'badge-default';
+      if (score >= 75) return 'badge-green';
+      if (score >= 50) return 'badge-yellow';
+      return 'badge-red';
     },
 
     /** Navigate to the upload view */
