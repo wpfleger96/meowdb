@@ -52,8 +52,20 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024
-_ALLOWED_SUFFIXES = {".m4a", ".mp3", ".wav", ".ogg", ".flac", ".aac", ".webm",
-                     ".mov", ".mp4", ".avi", ".mkv", ".3gp"}
+_ALLOWED_SUFFIXES = {
+    ".m4a",
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".flac",
+    ".aac",
+    ".webm",
+    ".mov",
+    ".mp4",
+    ".avi",
+    ".mkv",
+    ".3gp",
+}
 _VIDEO_SUFFIXES = {".mov", ".mp4", ".avi", ".mkv", ".3gp"}
 
 
@@ -94,13 +106,14 @@ def _resolve_source(job_id: str) -> Path:
 
 def _extract_audio_from_video(source_path: Path, staging_dir: Path) -> None:
     from pydub import AudioSegment
-    from pydub.exceptions import CouldntDecodeError
 
     audio_path = staging_dir / "source_audio.wav"
     try:
         audio = AudioSegment.from_file(str(source_path))
-    except CouldntDecodeError as exc:
-        raise HTTPException(status_code=400, detail="Could not extract audio from video file") from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail="Could not extract audio from video file"
+        ) from exc
     if len(audio) == 0:
         raise HTTPException(status_code=400, detail="Video file contains no audio track")
     audio.export(str(audio_path), format="wav")
@@ -141,7 +154,12 @@ async def create_ingest_job(
     db.update_job_status(job_id, "uploaded")
 
     if suffix in _VIDEO_SUFFIXES:
-        await run_in_threadpool(_extract_audio_from_video, temp_path, job_staging_dir)
+        try:
+            await run_in_threadpool(_extract_audio_from_video, temp_path, job_staging_dir)
+        except HTTPException:
+            shutil.rmtree(job_staging_dir, ignore_errors=True)
+            db.delete_job(job_id)
+            raise
 
     return IngestJobResponse(
         job_id=job_id,
