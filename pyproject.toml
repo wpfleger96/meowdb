@@ -21,6 +21,7 @@ dependencies = [
     "audioop-lts>=0.2.2; python_version >= '3.13'",
     "bcrypt>=4.0",
     "itsdangerous>=2.0",
+    "Pillow>=11.0",
 ]
 
 [project.scripts]
@@ -63,6 +64,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["numpy", "numpy.*", "scipy", "scipy.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["PIL", "PIL.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

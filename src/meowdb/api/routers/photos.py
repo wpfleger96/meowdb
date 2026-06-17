@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from pathlib import Path
@@ -11,6 +12,9 @@ from meowdb.api.auth import require_auth
 from meowdb.api.models import PhotoListResponse, PhotoResponse
 from meowdb.api.streaming import safe_path, stream_file
 from meowdb.config import PHOTOS_DIR
+from meowdb.photos import optimize_photo
+
+_logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -82,6 +86,14 @@ async def upload_photo(
                 raise HTTPException(status_code=413, detail="Photo exceeds 20 MB limit")
             dest.write(chunk)
 
+    try:
+        optimized_path = optimize_photo(dest_path)
+        dest_filename = optimized_path.name
+        if dest_path != optimized_path:
+            dest_path.unlink(missing_ok=True)
+    except Exception:
+        _logger.warning("Photo optimization failed for %s, using original", dest_filename)
+
     db.add_photo(dest_filename, photo_id=photo_id)
     photo = db.get_photo(photo_id)
     return _photo_to_response(photo)
@@ -104,7 +116,14 @@ async def serve_photo(photo_id: str, request: Request) -> StreamingResponse:
         raise HTTPException(status_code=403, detail="Access denied") from None
 
     media_type = _MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
-    return stream_file(path, request, media_type)
+    stat = path.stat()
+    etag = f'"{stat.st_mtime_ns}-{stat.st_size}"'
+    return stream_file(
+        path,
+        request,
+        media_type,
+        extra_headers={"Cache-Control": "public, max-age=86400", "ETag": etag},
+    )
 
 
 @router.delete("/photos/{photo_id}", status_code=204)

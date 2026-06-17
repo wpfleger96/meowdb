@@ -538,6 +538,14 @@ class MeowDB:
             ).fetchone()
         return dict(row) if row else None
 
+    def update_photo_filename(self, photo_id: str, filename: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE cat_photos SET filename = ? WHERE id = ?",
+                (filename, photo_id),
+            )
+            self._conn.commit()
+
     def delete_photo(self, photo_id: str) -> bool:
         with self._lock:
             cursor = self._conn.execute("DELETE FROM cat_photos WHERE id = ?", (photo_id,))
