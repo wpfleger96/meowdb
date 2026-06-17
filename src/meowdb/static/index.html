@@ -565,7 +565,7 @@
             @drop.prevent="onDrop($event)"
             role="button"
             tabindex="0"
-            aria-label="Upload audio file"
+            aria-label="Upload audio or video file"
             @keydown.enter="$refs.fileInput.click()"
             @keydown.space.prevent="$refs.fileInput.click()"
           >
@@ -573,13 +573,13 @@
             <div class="upload-zone-title">Upload a recording</div>
             <div class="upload-zone-body">
               Tap to choose a file, or drag and drop<br>
-              Supports .m4a, .mp3, .wav, and more
+              Supports audio and video files (.m4a, .mp3, .wav, .mp4, .mov, and more)
             </div>
             <button class="btn btn-primary" @click.stop="$refs.fileInput.click()">Choose file</button>
           </div>
           <input
             type="file"
-            accept="audio/*"
+            accept="audio/*,video/*"
             x-ref="fileInput"
             @change="onFileChange($event)"
             style="display:none"
