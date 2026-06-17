@@ -4,37 +4,26 @@
 
 function ingestView() {
   return {
-    // Phase: 'idle' | 'uploading' | 'clipping' | 'processing' | 'done'
     phase: 'idle',
-    jobId: null,
-    statusMessage: '',
-    isDragOver: false,
 
-    // Recording state
+    jobs: [],
+
+    uploadProgress: { done: 0, total: 0, errors: [] },
+
+    isDragOver: false,
     isRecording: false,
     recordSeconds: 0,
     _recordInterval: null,
-
-    // Reset-in-progress guard (prevents in-flight uploads from writing phase/jobId)
     _resetting: false,
 
-    // WaveSurfer state
-    _wavesurfer: null,
-    _regionsPlugin: null,
     _wavesurferLoaded: false,
-    isAutoDetecting: false,
-    regionCount: 0,
-    clips: [],
-    zoomLevel: 0,
-    _minPxPerSec: 0,
-    duration: 0,
-    currentTime: 0,
 
     /* ──────────────────────────────────────────────────────
        Lifecycle
     ────────────────────────────────────────────────────── */
 
     init() {
+      this._wavesurfers = new Map();
       try {
         micRecorder.onTick = (s) => { this.recordSeconds = s; };
         micRecorder.onStop = (blob) => { this._uploadBlob(blob); };
@@ -44,7 +33,10 @@ function ingestView() {
     },
 
     destroy() {
-      this._destroyWaveSurfer();
+      for (const job of this.jobs) {
+        this._destroyWaveSurferForJob(job);
+      }
+      this._wavesurfers = new Map();
     },
 
     /* ──────────────────────────────────────────────────────
@@ -52,10 +44,9 @@ function ingestView() {
     ────────────────────────────────────────────────────── */
 
     onFileChange(event) {
-      const file = event.target.files?.[0];
-      if (file) this._uploadFile(file);
-      // Reset input so same file can be re-selected
+      const files = Array.from(event.target.files || []);
       event.target.value = '';
+      if (files.length > 0) this._uploadFiles(files);
     },
 
     onDragOver(event) {
@@ -70,25 +61,85 @@ function ingestView() {
     onDrop(event) {
       event.preventDefault();
       this.isDragOver = false;
-      const file = event.dataTransfer?.files?.[0];
-      if (file) this._uploadFile(file);
+      const files = Array.from(event.dataTransfer?.files || []).filter(
+        f => f.type.startsWith('audio/') || f.type.startsWith('video/')
+      );
+      if (files.length > 0) this._uploadFiles(files);
     },
 
-    async _uploadFile(file) {
+    async _uploadFiles(files) {
       if (this._resetting) return;
-      if (this.$root.authRequired && !this.$root.authenticated) { this.$root.showLoginModal = true; return; }
-      this.phase = 'uploading';
-      this.statusMessage = 'Uploading…';
-      try {
-        const job = await createIngestJob(file);
-        this.jobId = job.job_id;
-        this.phase = 'clipping';
-        await this._ensureWaveSurfer();
-        this.$nextTick(() => this._initWaveSurfer());
-      } catch (err) {
-        this.phase = 'idle';
-        showToast(err.message || 'Upload failed', 'error');
+      if (this.$root.authRequired && !this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
       }
+
+      this.phase = 'uploading';
+      this.uploadProgress = { done: 0, total: files.length, errors: [] };
+      for (const job of this.jobs) {
+        this._destroyWaveSurferForJob(job);
+      }
+      this.jobs = [];
+
+      await this._ensureWaveSurfer();
+
+      for (let i = 0; i < files.length; i++) {
+        if (this._resetting) return;
+        const file = files[i];
+        const job = {
+          jobId: null,
+          filename: file.name,
+          phase: 'uploading',
+          errorMessage: null,
+          isAutoDetecting: false,
+          regionCount: 0,
+          clips: [],
+          zoomLevel: 0,
+          _minPxPerSec: 0,
+          duration: 0,
+          currentTime: 0,
+          containerId: 'clip-waveform-' + i,
+        };
+        this.jobs.push(job);
+
+        try {
+          const result = await createIngestJob(file);
+          job.jobId = result.job_id;
+          job.phase = 'clipping';
+        } catch (err) {
+          job.phase = 'error';
+          job.errorMessage = err.message || 'Upload failed';
+          this.uploadProgress.errors.push(file.name);
+        }
+        this.uploadProgress.done++;
+      }
+
+      const successJobs = this.jobs.filter(j => j.phase === 'clipping');
+      if (successJobs.length === 0) {
+        this.phase = 'idle';
+        showToast('All uploads failed', 'error');
+        return;
+      }
+
+      this.phase = 'clipping';
+
+      if (this.uploadProgress.errors.length > 0) {
+        showToast(
+          `${this.uploadProgress.errors.length} of ${files.length} uploads failed`,
+          'error'
+        );
+      }
+
+      this.$nextTick(() => {
+        for (const job of successJobs) {
+          if (!this._resetting) this._initWaveSurferForJob(job);
+        }
+      });
+    },
+
+    async _uploadBlob(blob) {
+      const file = new File([blob], 'recording.webm', { type: blob.type });
+      await this._uploadFiles([file]);
     },
 
     /* ──────────────────────────────────────────────────────
@@ -112,11 +163,6 @@ function ingestView() {
         micRecorder.stop();
         this.isRecording = false;
       }
-    },
-
-    async _uploadBlob(blob) {
-      const file = new File([blob], 'recording.webm', { type: blob.type });
-      await this._uploadFile(file);
     },
 
     formatRecordTime(seconds) {
@@ -148,16 +194,12 @@ function ingestView() {
       });
     },
 
-    _initWaveSurfer() {
-      const container = document.getElementById('clip-waveform-container');
+    _initWaveSurferForJob(job) {
+      const container = document.getElementById(job.containerId);
       if (!container) return;
 
-      // Mark WaveSurfer objects as non-observable before assigning to `this` so
-      // Alpine's deep-proxy doesn't wrap them. Proxied WaveSurfer objects break
-      // internal identity comparisons (region filter on remove, etc.).
       const regionsPlugin = WaveSurfer.Regions.create();
       regionsPlugin.__v_skip = true;
-      this._regionsPlugin = regionsPlugin;
 
       const ws = WaveSurfer.create({
         container,
@@ -170,7 +212,7 @@ function ingestView() {
         normalize: true,
         interact: true,
         scrollParent: true,
-        url: sourceAudioUrl(this.jobId),
+        url: sourceAudioUrl(job.jobId),
         plugins: [
           regionsPlugin,
           WaveSurfer.Timeline.create({
@@ -180,32 +222,33 @@ function ingestView() {
         ],
       });
       ws.__v_skip = true;
-      this._wavesurfer = ws;
 
-      this._wavesurfer.on('ready', () => {
-        const duration = this._wavesurfer.getDuration();
-        this.duration = duration;
-        this.currentTime = 0;
+      this._wavesurfers.set(job.containerId, { ws, regions: regionsPlugin });
+
+      ws.on('ready', () => {
+        const duration = ws.getDuration();
+        job.duration = duration;
+        job.currentTime = 0;
         if (duration > 0) {
-          this._minPxPerSec = container.clientWidth / duration;
+          job._minPxPerSec = container.clientWidth / duration;
         }
       });
 
-      this._wavesurfer.on('timeupdate', (t) => { this.currentTime = t; });
+      ws.on('timeupdate', (t) => { job.currentTime = t; });
 
-      this._regionsPlugin.enableDragSelection({ color: 'rgba(255, 107, 107, 0.25)' });
+      regionsPlugin.enableDragSelection({ color: 'rgba(255, 107, 107, 0.25)' });
 
-      this._regionsPlugin.on('region-created', (region) => {
-        this.regionCount = this._regionsPlugin.getRegions().length;
+      regionsPlugin.on('region-created', (region) => {
+        job.regionCount = regionsPlugin.getRegions().length;
         this._addDeleteButton(region);
-        this.clips.push({ id: region.id, start: region.start, end: region.end, region });
+        job.clips.push({ id: region.id, start: region.start, end: region.end, region });
       });
-      this._regionsPlugin.on('region-removed', (region) => {
-        this.regionCount = this._regionsPlugin.getRegions().length;
-        this.clips = this.clips.filter(c => c.id !== region.id);
+      regionsPlugin.on('region-removed', (region) => {
+        job.regionCount = regionsPlugin.getRegions().length;
+        job.clips = job.clips.filter(c => c.id !== region.id);
       });
-      this._regionsPlugin.on('region-updated', (region) => {
-        const clip = this.clips.find(c => c.id === region.id);
+      regionsPlugin.on('region-updated', (region) => {
+        const clip = job.clips.find(c => c.id === region.id);
         if (clip) {
           clip.start = region.start;
           clip.end = region.end;
@@ -231,118 +274,144 @@ function ingestView() {
       region.element.appendChild(btn);
     },
 
-    zoomIn() {
-      if (!this._wavesurfer || this.zoomLevel >= 10) return;
-      this.zoomLevel += 1;
-      this._applyZoom();
-    },
-
-    zoomOut() {
-      if (!this._wavesurfer || this.zoomLevel <= 0) return;
-      this.zoomLevel -= 1;
-      this._applyZoom();
-    },
-
-    _applyZoom() {
-      if (!this._wavesurfer || this._minPxPerSec === 0) return;
-      const pxPerSec = this._minPxPerSec * Math.pow(2, this.zoomLevel);
-      this._wavesurfer.zoom(pxPerSec);
-    },
-
-    _destroyWaveSurfer() {
-      if (this._wavesurfer) {
-        try { this._wavesurfer.destroy(); } catch {}
-        this._wavesurfer = null;
-        this._regionsPlugin = null;
-        this.duration = 0;
-        this.currentTime = 0;
+    _destroyWaveSurferForJob(job) {
+      const entry = this._wavesurfers?.get(job.containerId);
+      if (entry) {
+        try { entry.ws.destroy(); } catch {}
+        this._wavesurfers.delete(job.containerId);
       }
+      job.duration = 0;
+      job.currentTime = 0;
     },
 
-    formatTimecode(s) {
-      const m = Math.floor(s / 60);
-      const sec = Math.floor(s % 60).toString().padStart(2, '0');
-      return `${m}:${sec}`;
+    /* ──────────────────────────────────────────────────────
+       Per-job actions
+    ────────────────────────────────────────────────────── */
+
+    zoomIn(job) {
+      if (job.zoomLevel >= 10) return;
+      job.zoomLevel += 1;
+      this._applyZoom(job);
     },
 
-    togglePlayPause() {
-      if (this._wavesurfer) this._wavesurfer.playPause();
+    zoomOut(job) {
+      if (job.zoomLevel <= 0) return;
+      job.zoomLevel -= 1;
+      this._applyZoom(job);
     },
 
-    async autoDetect() {
-      if (this.$root.authRequired && !this.$root.authenticated) { this.$root.showLoginModal = true; return; }
-      this.isAutoDetecting = true;
+    _applyZoom(job) {
+      const entry = this._wavesurfers?.get(job.containerId);
+      if (!entry || job._minPxPerSec === 0) return;
+      const pxPerSec = job._minPxPerSec * Math.pow(2, job.zoomLevel);
+      entry.ws.zoom(pxPerSec);
+    },
+
+    togglePlayPause(job) {
+      const entry = this._wavesurfers?.get(job.containerId);
+      if (entry) entry.ws.playPause();
+    },
+
+    async autoDetect(job) {
+      if (this.$root.authRequired && !this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
+      job.isAutoDetecting = true;
       try {
-        const result = await detectRegions(this.jobId);
-        this.clips = [];
-        this._regionsPlugin.clearRegions();
-        for (const r of result.regions) {
-          this._regionsPlugin.addRegion({
-            start: r.start_ms / 1000,
-            end: r.end_ms / 1000,
-            color: 'rgba(255, 107, 107, 0.25)',
-            drag: true,
-            resize: true,
-          });
+        const result = await detectRegions(job.jobId);
+        job.clips = [];
+        const entry = this._wavesurfers?.get(job.containerId);
+        if (entry) {
+          entry.regions.clearRegions();
+          for (const r of result.regions) {
+            entry.regions.addRegion({
+              start: r.start_ms / 1000,
+              end: r.end_ms / 1000,
+              color: 'rgba(255, 107, 107, 0.25)',
+              drag: true,
+              resize: true,
+            });
+          }
+          job.regionCount = entry.regions.getRegions().length;
         }
-        this.regionCount = this._regionsPlugin.getRegions().length;
-        if (this.regionCount === 0) {
+        if (result.regions.length === 0) {
           showToast('No meows detected — draw regions manually', 'info');
         }
       } catch (err) {
         showToast(err.message || 'Auto-detect failed', 'error');
       } finally {
-        this.isAutoDetecting = false;
+        job.isAutoDetecting = false;
       }
     },
 
-    playClip(clip) {
-      if (this._wavesurfer) this._wavesurfer.play(clip.start, clip.end);
+    playClip(job, clip) {
+      const entry = this._wavesurfers?.get(job.containerId);
+      if (entry) entry.ws.play(clip.start, clip.end);
     },
 
-    removeClip(clip) {
+    removeClip(job, clip) {
       if (clip.region) clip.region.remove();
     },
 
-    async saveClips() {
-      if (this.$root.authRequired && !this.$root.authenticated) { this.$root.showLoginModal = true; return; }
-      const regions = this._regionsPlugin.getRegions();
+    async saveClips(job) {
+      if (this.$root.authRequired && !this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
+      const entry = this._wavesurfers?.get(job.containerId);
+      if (!entry) return;
+      const regions = entry.regions.getRegions();
       if (regions.length === 0) {
         showToast('Draw at least one region first', 'info');
         return;
       }
-      const regionData = regions.map((r) => ({
+      const regionData = regions.map(r => ({
         start_ms: Math.round(r.start * 1000),
         end_ms: Math.round(r.end * 1000),
       }));
       regionData.sort((a, b) => a.start_ms - b.start_ms);
 
-      this.phase = 'processing';
-      this.statusMessage = 'Processing ' + regions.length + ' clip' + (regions.length !== 1 ? 's' : '') + '…';
+      job.phase = 'processing';
 
       try {
-        const result = await clipAndCommit(this.jobId, regionData);
-        this._destroyWaveSurfer();
-        this.phase = 'done';
+        const result = await clipAndCommit(job.jobId, regionData);
+        this._destroyWaveSurferForJob(job);
+        job.phase = 'done';
         showToast('Saved ' + result.meow_ids.length + ' meow' + (result.meow_ids.length !== 1 ? 's' : ''), 'success');
+        if (this.jobs.every(j => j.phase === 'done' || j.phase === 'error')) {
+          this.phase = 'done';
+        }
       } catch (err) {
-        this.phase = 'clipping';
+        job.phase = 'clipping';
         showToast(err.message || 'Save failed', 'error');
+      }
+    },
+
+    async saveAllClips() {
+      if (this.$root.authRequired && !this.$root.authenticated) {
+        this.$root.showLoginModal = true;
+        return;
+      }
+      const clippingJobs = this.jobs.filter(j => j.phase === 'clipping');
+      for (const job of clippingJobs) {
+        const entry = this._wavesurfers?.get(job.containerId);
+        if (entry && entry.regions.getRegions().length > 0) {
+          await this.saveClips(job);
+        }
       }
     },
 
     reset() {
       this._resetting = true;
       if (this.isRecording) this.stopRecording();
-      this._destroyWaveSurfer();
-      this.regionCount = 0;
-      this.clips = [];
-      this.zoomLevel = 0;
-      this._minPxPerSec = 0;
+      for (const job of this.jobs) {
+        this._destroyWaveSurferForJob(job);
+      }
       audioPlayer.stop();
+      this.jobs = [];
       this.phase = 'idle';
-      this.jobId = null;
-      this.statusMessage = '';
+      this.uploadProgress = { done: 0, total: 0, errors: [] };
       this._resetting = false;
     },
 
@@ -351,6 +420,11 @@ function ingestView() {
     ────────────────────────────────────────────────────── */
 
     formatDuration(ms) { return MeowUtils.formatDuration(ms); },
+
+    formatTimecode(s) {
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60).toString().padStart(2, '0');
+      return `${m}:${sec}`;
+    },
   };
 }
-

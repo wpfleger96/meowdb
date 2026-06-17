@@ -414,7 +414,7 @@
       x-data="photosView()"
       x-init="init()"
     >
-      <div class="photos-view" :class="{ 'detail-open': showDetail }">
+      <div class="photos-view" :class="{ 'detail-open': showDetail, 'drag-over': isDragOver }" @dragover.prevent="onPhotoDragOver($event)" @dragleave="onPhotoDragLeave()" @drop.prevent="onPhotoDrop($event)">
 
         <!-- Header with upload button -->
         <div class="photos-header view-header">
@@ -424,12 +424,19 @@
             <input
               type="file"
               accept="image/*"
+              multiple
               x-ref="photoInput"
               @change="onPhotoChange($event)"
               style="display:none"
               aria-hidden="true"
             >
           </div>
+        </div>
+
+        <!-- Upload progress -->
+        <div class="upload-progress" x-show="uploadingPhotos">
+          <div class="spinner spinner-lg"></div>
+          <p class="text-lg font-medium" x-text="'Uploading ' + photoUploadProgress.done + ' / ' + photoUploadProgress.total + '…'"></p>
         </div>
 
         <!-- Loading state -->
@@ -451,6 +458,7 @@
           <input
             type="file"
             accept="image/*"
+            multiple
             x-ref="photoInputEmpty"
             @change="onPhotoChange($event)"
             style="display:none"
@@ -565,21 +573,22 @@
             @drop.prevent="onDrop($event)"
             role="button"
             tabindex="0"
-            aria-label="Upload audio or video file"
+            aria-label="Upload audio or video files"
             @keydown.enter="$refs.fileInput.click()"
             @keydown.space.prevent="$refs.fileInput.click()"
           >
             <div class="upload-zone-icon">🎵</div>
-            <div class="upload-zone-title">Upload a recording</div>
+            <div class="upload-zone-title">Upload recordings</div>
             <div class="upload-zone-body">
-              Tap to choose a file, or drag and drop<br>
+              Tap to choose files, or drag and drop<br>
               Supports audio and video files (.m4a, .mp3, .wav, .mp4, .mov, and more)
             </div>
-            <button class="btn btn-primary" @click.stop="$refs.fileInput.click()">Choose file</button>
+            <button class="btn btn-primary" @click.stop="$refs.fileInput.click()">Choose files</button>
           </div>
           <input
             type="file"
             accept="audio/*,video/*"
+            multiple
             x-ref="fileInput"
             @change="onFileChange($event)"
             style="display:none"
@@ -609,73 +618,99 @@
           </div>
         </div>
 
-        <!-- ── uploading / processing ── -->
-        <div class="upload-progress" x-show="phase === 'uploading' || phase === 'processing'">
+        <!-- ── uploading ── -->
+        <div class="upload-progress" x-show="phase === 'uploading'">
           <div class="spinner spinner-lg"></div>
-          <p class="text-lg font-medium" x-text="statusMessage || 'Processing…'"></p>
+          <p class="text-lg font-medium" x-text="'Uploading ' + uploadProgress.done + ' / ' + uploadProgress.total + '…'"></p>
           <p class="text-sm text-secondary">This may take a few seconds</p>
         </div>
 
-        <!-- ── clipping: waveform editor ── -->
-        <div class="clip-container" x-show="phase === 'clipping'">
-          <div class="clip-waveform-wrap">
-            <div id="clip-waveform-container"></div>
-          </div>
-          <div class="clip-timecode" x-show="duration > 0">
-            <span class="clip-timecode-current" x-text="formatTimecode(currentTime)"></span>
-            <span class="clip-timecode-sep">/</span>
-            <span x-text="formatTimecode(duration)"></span>
-          </div>
-          <p class="text-sm text-muted text-center">Click and drag on the waveform to mark meow regions</p>
-          <div class="clip-transport">
-            <button class="btn btn-ghost" @click="zoomOut()" :disabled="zoomLevel === 0" aria-label="Zoom out">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                <line x1="8" y1="11" x2="14" y2="11"/>
-              </svg>
-            </button>
-            <button class="btn btn-ghost" @click="togglePlayPause()" aria-label="Play / Pause">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            </button>
-            <button class="btn btn-ghost" @click="zoomIn()" :disabled="zoomLevel >= 10" aria-label="Zoom in">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                <line x1="11" y1="8" x2="11" y2="14"/>
-                <line x1="8" y1="11" x2="14" y2="11"/>
-              </svg>
-            </button>
-            <button
-              class="btn btn-ghost"
-              @click="autoDetect()"
-              :disabled="isAutoDetecting"
-              x-text="isAutoDetecting ? 'Detecting…' : 'Auto-detect'"
-            ></button>
-          </div>
-          <div class="clip-actions">
-            <button
-              class="btn btn-primary btn-full"
-              @click="saveClips()"
-              :disabled="regionCount === 0"
-              x-text="regionCount === 0 ? 'Draw regions to save' : 'Save ' + regionCount + (regionCount === 1 ? ' clip' : ' clips')"
-            ></button>
-          </div>
+        <!-- ── clipping: per-job waveform editors ── -->
+        <div x-show="phase === 'clipping'">
+          <template x-for="(job, idx) in jobs" :key="job.containerId">
+            <div x-show="job.phase !== 'error'">
+              <div class="clip-section">
+                <div class="clip-section-header">
+                  <span class="clip-section-title" x-text="job.filename"></span>
+                  <span class="badge badge-default" x-show="job.phase === 'done'">Saved</span>
+                  <span class="badge badge-default" x-show="job.phase === 'processing'">Processing…</span>
+                </div>
 
-          <!-- Clip list -->
-          <div class="clip-list" x-show="clips.length > 0">
-            <template x-for="(clip, index) in clips" :key="clip.id">
-              <div class="clip-list-item">
-                <span class="clip-list-number" x-text="'#' + (index + 1)"></span>
-                <span class="clip-list-range" x-text="formatTimecode(clip.start) + ' – ' + formatTimecode(clip.end)"></span>
-                <button class="btn-icon clip-list-play" @click="playClip(clip)" aria-label="Play clip">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                </button>
-                <button class="btn-icon clip-list-delete" @click="removeClip(clip)" aria-label="Delete clip">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                </button>
+                <div class="clip-container" x-show="job.phase === 'clipping'">
+                  <div class="clip-waveform-wrap">
+                    <div :id="job.containerId"></div>
+                  </div>
+                  <div class="clip-timecode" x-show="job.duration > 0">
+                    <span class="clip-timecode-current" x-text="formatTimecode(job.currentTime)"></span>
+                    <span class="clip-timecode-sep">/</span>
+                    <span x-text="formatTimecode(job.duration)"></span>
+                  </div>
+                  <p class="text-sm text-muted text-center">Click and drag on the waveform to mark meow regions</p>
+                  <div class="clip-transport">
+                    <button class="btn btn-ghost" @click="zoomOut(job)" :disabled="job.zoomLevel === 0" aria-label="Zoom out">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        <line x1="8" y1="11" x2="14" y2="11"/>
+                      </svg>
+                    </button>
+                    <button class="btn btn-ghost" @click="togglePlayPause(job)" aria-label="Play / Pause">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </button>
+                    <button class="btn btn-ghost" @click="zoomIn(job)" :disabled="job.zoomLevel >= 10" aria-label="Zoom in">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        <line x1="11" y1="8" x2="11" y2="14"/>
+                        <line x1="8" y1="11" x2="14" y2="11"/>
+                      </svg>
+                    </button>
+                    <button
+                      class="btn btn-ghost"
+                      @click="autoDetect(job)"
+                      :disabled="job.isAutoDetecting"
+                      x-text="job.isAutoDetecting ? 'Detecting…' : 'Auto-detect'"
+                    ></button>
+                  </div>
+                  <div class="clip-actions">
+                    <button
+                      class="btn btn-primary btn-full"
+                      @click="saveClips(job)"
+                      :disabled="job.regionCount === 0"
+                      x-text="job.regionCount === 0 ? 'Draw regions to save' : 'Save ' + job.regionCount + (job.regionCount === 1 ? ' clip' : ' clips')"
+                    ></button>
+                  </div>
+
+                  <div class="clip-list" x-show="job.clips.length > 0">
+                    <template x-for="(clip, ci) in job.clips" :key="clip.id">
+                      <div class="clip-list-item">
+                        <span class="clip-list-number" x-text="'#' + (ci + 1)"></span>
+                        <span class="clip-list-range" x-text="formatTimecode(clip.start) + ' – ' + formatTimecode(clip.end)"></span>
+                        <button class="btn-icon clip-list-play" @click="playClip(job, clip)" aria-label="Play clip">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        </button>
+                        <button class="btn-icon clip-list-delete" @click="removeClip(job, clip)" aria-label="Delete clip">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                        </button>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
+                <div class="upload-progress" x-show="job.phase === 'processing'" style="padding:var(--sp-4);">
+                  <div class="spinner"></div>
+                  <p class="text-sm text-secondary">Processing clips…</p>
+                </div>
+
+                <div class="clip-section-done" x-show="job.phase === 'done'">Saved</div>
               </div>
-            </template>
+
+              <div class="divider" x-show="idx < jobs.length - 1 && jobs[idx + 1]?.phase !== 'error'" style="margin:0 var(--sp-4);"></div>
+            </div>
+          </template>
+
+          <div class="clip-actions" x-show="jobs.filter(j => j.phase === 'clipping').length > 1" style="padding:var(--sp-3) var(--sp-4) var(--sp-4);">
+            <button class="btn btn-secondary btn-full" @click="saveAllClips()">Save All Clips</button>
           </div>
         </div>
 

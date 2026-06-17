@@ -872,3 +872,46 @@
   max-height: 50vh;
   display: block;
 }
+
+/* ── Multi-job clip sections ── */
+
+.clip-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4) 0;
+}
+
+.clip-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+}
+
+.clip-section-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.clip-section-done {
+  padding: var(--sp-3) var(--sp-4);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ── Drag-over tint for photos view ── */
+
+.photos-view.drag-over {
+  background: var(--accent-glow);
+}
