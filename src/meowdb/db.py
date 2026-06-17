@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+import threading
 import uuid
 
 from pathlib import Path
@@ -75,6 +76,9 @@ class MeowDB:
     def __init__(self, db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        # RLock (reentrant) so methods that call other methods (e.g. get_stats →
+        # _count_labels) don't deadlock when both try to acquire the same lock.
+        self._lock = threading.RLock()
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(_CREATE_MEOWS)
@@ -101,11 +105,13 @@ class MeowDB:
         self._conn.commit()
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
 
     def ping(self) -> bool:
         try:
-            self._conn.execute("SELECT 1").fetchone()
+            with self._lock:
+                self._conn.execute("SELECT 1").fetchone()
             return True
         except Exception:
             return False
@@ -123,49 +129,53 @@ class MeowDB:
 
     def add(self, metadata: dict) -> str:  # type: ignore[type-arg]
         meow_id = str(uuid.uuid4())
-        self._conn.execute(
-            """
-            INSERT INTO meows
-                (id, timestamp, duration_ms, labels, wav_path, mp3_path,
-                 waveform_data, peak_dbfs, cat_energy_ratio)
-            VALUES
-                (:id, :timestamp, :duration_ms, :labels, :wav_path, :mp3_path,
-                 :waveform_data, :peak_dbfs, :cat_energy_ratio)
-            """,
-            {
-                "id": meow_id,
-                "timestamp": metadata.get("timestamp", ""),
-                "duration_ms": metadata["duration_ms"],
-                "labels": json.dumps(metadata.get("labels", [])),
-                "wav_path": metadata["wav_path"],
-                "mp3_path": metadata["mp3_path"],
-                "waveform_data": json.dumps(metadata.get("waveform_data", [])),
-                "peak_dbfs": metadata.get("peak_dbfs"),
-                "cat_energy_ratio": metadata.get("cat_energy_ratio"),
-            },
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO meows
+                    (id, timestamp, duration_ms, labels, wav_path, mp3_path,
+                     waveform_data, peak_dbfs, cat_energy_ratio)
+                VALUES
+                    (:id, :timestamp, :duration_ms, :labels, :wav_path, :mp3_path,
+                     :waveform_data, :peak_dbfs, :cat_energy_ratio)
+                """,
+                {
+                    "id": meow_id,
+                    "timestamp": metadata.get("timestamp", ""),
+                    "duration_ms": metadata["duration_ms"],
+                    "labels": json.dumps(metadata.get("labels", [])),
+                    "wav_path": metadata["wav_path"],
+                    "mp3_path": metadata["mp3_path"],
+                    "waveform_data": json.dumps(metadata.get("waveform_data", [])),
+                    "peak_dbfs": metadata.get("peak_dbfs"),
+                    "cat_energy_ratio": metadata.get("cat_energy_ratio"),
+                },
+            )
+            self._conn.commit()
         return meow_id
 
     def get_random(self, exclude_id: str | None = None) -> dict | None:  # type: ignore[type-arg]
-        if exclude_id:
-            row = self._conn.execute(
-                "SELECT * FROM meows WHERE id != ? ORDER BY RANDOM() LIMIT 1", (exclude_id,)
-            ).fetchone()
-            if row is None:
+        with self._lock:
+            if exclude_id:
+                row = self._conn.execute(
+                    "SELECT * FROM meows WHERE id != ? ORDER BY RANDOM() LIMIT 1", (exclude_id,)
+                ).fetchone()
+                if row is None:
+                    row = self._conn.execute(
+                        "SELECT * FROM meows ORDER BY RANDOM() LIMIT 1"
+                    ).fetchone()
+            else:
                 row = self._conn.execute("SELECT * FROM meows ORDER BY RANDOM() LIMIT 1").fetchone()
-        else:
-            row = self._conn.execute("SELECT * FROM meows ORDER BY RANDOM() LIMIT 1").fetchone()
-        if row is None:
-            return None
-        meow_id = row["id"]
-        self._conn.execute(
-            "UPDATE meows SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?",
-            (meow_id,),
-        )
-        self._conn.commit()
-        updated = self._conn.execute("SELECT * FROM meows WHERE id = ?", (meow_id,)).fetchone()
-        return self._row_to_dict(updated)
+            if row is None:
+                return None
+            meow_id = row["id"]
+            self._conn.execute(
+                "UPDATE meows SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?",
+                (meow_id,),
+            )
+            self._conn.commit()
+            updated = self._conn.execute("SELECT * FROM meows WHERE id = ?", (meow_id,)).fetchone()
+            return self._row_to_dict(updated)
 
     def get_all(
         self,
@@ -179,21 +189,23 @@ class MeowDB:
         # rowid tiebreaker gives stable ordering when timestamps are identical (same-second inserts)
         order = _SORT_MAP[sort]
 
-        if label_filter:
-            rows = self._conn.execute(
-                f"SELECT * FROM meows WHERE labels LIKE ? ORDER BY {order} LIMIT ? OFFSET ?",
-                (f'%"{label_filter}"%', limit, offset),
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                f"SELECT * FROM meows ORDER BY {order} LIMIT ? OFFSET ?",
-                (limit, offset),
-            ).fetchall()
+        with self._lock:
+            if label_filter:
+                rows = self._conn.execute(
+                    f"SELECT * FROM meows WHERE labels LIKE ? ORDER BY {order} LIMIT ? OFFSET ?",
+                    (f'%"{label_filter}"%', limit, offset),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    f"SELECT * FROM meows ORDER BY {order} LIMIT ? OFFSET ?",
+                    (limit, offset),
+                ).fetchall()
 
         return [self._row_to_dict(r) for r in rows]
 
     def get_by_id(self, meow_id: str) -> dict | None:  # type: ignore[type-arg]
-        row = self._conn.execute("SELECT * FROM meows WHERE id = ?", (meow_id,)).fetchone()
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM meows WHERE id = ?", (meow_id,)).fetchone()
         return self._row_to_dict(row) if row else None
 
     def update_meow(self, meow_id: str, updates: dict) -> bool:  # type: ignore[type-arg]
@@ -203,49 +215,55 @@ class MeowDB:
             return True
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [meow_id]
-        cursor = self._conn.execute(
-            f"UPDATE meows SET {set_clause} WHERE id = ?",
-            values,
-        )
-        self._conn.commit()
+        with self._lock:
+            cursor = self._conn.execute(
+                f"UPDATE meows SET {set_clause} WHERE id = ?",
+                values,
+            )
+            self._conn.commit()
         return cursor.rowcount > 0
 
     def update_labels(self, meow_id: str, labels: list[str]) -> bool:
-        cursor = self._conn.execute(
-            "UPDATE meows SET labels = ? WHERE id = ?",
-            (json.dumps(labels), meow_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            cursor = self._conn.execute(
+                "UPDATE meows SET labels = ? WHERE id = ?",
+                (json.dumps(labels), meow_id),
+            )
+            self._conn.commit()
         return cursor.rowcount > 0
 
     def delete(self, meow_id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM meows WHERE id = ?", (meow_id,))
-        self._conn.commit()
+        with self._lock:
+            cursor = self._conn.execute("DELETE FROM meows WHERE id = ?", (meow_id,))
+            self._conn.commit()
         return cursor.rowcount > 0
 
     def increment_play_count(self, meow_id: str) -> None:
-        self._conn.execute(
-            "UPDATE meows SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?",
-            (meow_id,),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE meows SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?",
+                (meow_id,),
+            )
+            self._conn.commit()
 
     def get_count(self, label_filter: str | None = None) -> int:
-        if label_filter:
-            row = self._conn.execute(
-                "SELECT COUNT(*) FROM meows WHERE labels LIKE ?",
-                (f'%"{label_filter}"%',),
-            ).fetchone()
-        else:
-            row = self._conn.execute("SELECT COUNT(*) FROM meows").fetchone()
+        with self._lock:
+            if label_filter:
+                row = self._conn.execute(
+                    "SELECT COUNT(*) FROM meows WHERE labels LIKE ?",
+                    (f'%"{label_filter}"%',),
+                ).fetchone()
+            else:
+                row = self._conn.execute("SELECT COUNT(*) FROM meows").fetchone()
         return int(row[0])
 
     def update_meow_paths(self, meow_id: str, wav_path: str, mp3_path: str) -> None:
-        self._conn.execute(
-            "UPDATE meows SET wav_path = ?, mp3_path = ? WHERE id = ?",
-            (wav_path, mp3_path, meow_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE meows SET wav_path = ?, mp3_path = ? WHERE id = ?",
+                (wav_path, mp3_path, meow_id),
+            )
+            self._conn.commit()
 
     # -------------------------------------------------------------------------
     # Job staging
@@ -253,75 +271,82 @@ class MeowDB:
 
     def create_job(self, source_filename: str) -> str:
         job_id = str(uuid.uuid4())
-        self._conn.execute(
-            "INSERT INTO ingest_jobs (id, source_filename) VALUES (?, ?)",
-            (job_id, source_filename),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO ingest_jobs (id, source_filename) VALUES (?, ?)",
+                (job_id, source_filename),
+            )
+            self._conn.commit()
         return job_id
 
     def get_job(self, job_id: str) -> dict | None:  # type: ignore[type-arg]
-        row = self._conn.execute("SELECT * FROM ingest_jobs WHERE id = ?", (job_id,)).fetchone()
-        if row is None:
-            return None
-        job = dict(row)
-        if job["status"] == "ready":
-            segs = self._conn.execute(
-                "SELECT * FROM ingest_segments WHERE job_id = ? ORDER BY index_in_job",
-                (job_id,),
-            ).fetchall()
-            job["segments"] = [self._row_to_dict(s) for s in segs]
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM ingest_jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None:
+                return None
+            job = dict(row)
+            if job["status"] == "ready":
+                segs = self._conn.execute(
+                    "SELECT * FROM ingest_segments WHERE job_id = ? ORDER BY index_in_job",
+                    (job_id,),
+                ).fetchall()
+                job["segments"] = [self._row_to_dict(s) for s in segs]
         return job
 
     def update_job_status(self, job_id: str, status: str, error: str | None = None) -> None:
-        self._conn.execute(
-            "UPDATE ingest_jobs SET status = ?, error = ?, updated_at = datetime('now') WHERE id = ?",
-            (status, error, job_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE ingest_jobs SET status = ?, error = ?, updated_at = datetime('now') WHERE id = ?",
+                (status, error, job_id),
+            )
+            self._conn.commit()
 
     def add_segments(self, job_id: str, segments: list[dict]) -> None:  # type: ignore[type-arg]
-        for seg in segments:
-            seg_id = str(uuid.uuid4())
-            self._conn.execute(
-                """
-                INSERT INTO ingest_segments
-                    (id, job_id, index_in_job, duration_ms, wav_path, waveform_data,
-                     peak_dbfs, cat_energy_ratio)
-                VALUES
-                    (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    seg_id,
-                    job_id,
-                    seg["index"],
-                    seg["duration_ms"],
-                    seg["wav_path"],
-                    json.dumps(seg.get("waveform_data", [])),
-                    seg.get("peak_dbfs"),
-                    seg.get("cat_energy_ratio"),
-                ),
-            )
-        self._conn.commit()
+        with self._lock:
+            for seg in segments:
+                seg_id = str(uuid.uuid4())
+                self._conn.execute(
+                    """
+                    INSERT INTO ingest_segments
+                        (id, job_id, index_in_job, duration_ms, wav_path, waveform_data,
+                         peak_dbfs, cat_energy_ratio)
+                    VALUES
+                        (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        seg_id,
+                        job_id,
+                        seg["index"],
+                        seg["duration_ms"],
+                        seg["wav_path"],
+                        json.dumps(seg.get("waveform_data", [])),
+                        seg.get("peak_dbfs"),
+                        seg.get("cat_energy_ratio"),
+                    ),
+                )
+            self._conn.commit()
 
     def update_segment_status(self, segment_id: str, status: str) -> None:
-        self._conn.execute(
-            "UPDATE ingest_segments SET status = ? WHERE id = ?",
-            (status, segment_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE ingest_segments SET status = ? WHERE id = ?",
+                (status, segment_id),
+            )
+            self._conn.commit()
 
     def get_segment(self, segment_id: str, job_id: str) -> dict | None:  # type: ignore[type-arg]
-        row = self._conn.execute(
-            "SELECT * FROM ingest_segments WHERE id = ? AND job_id = ?",
-            (segment_id, job_id),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM ingest_segments WHERE id = ? AND job_id = ?",
+                (segment_id, job_id),
+            ).fetchone()
         return self._row_to_dict(row) if row else None
 
     def get_segment_ids(self, job_id: str) -> list[str]:
-        rows = self._conn.execute(
-            "SELECT id FROM ingest_segments WHERE job_id = ?", (job_id,)
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id FROM ingest_segments WHERE job_id = ?", (job_id,)
+            ).fetchall()
         return [row["id"] for row in rows]
 
     def commit_job(
@@ -334,29 +359,38 @@ class MeowDB:
         recorded_at: str | None = None,
     ) -> list[str]:
         new_meow_ids: list[str] = []
+        # (meow_id, seg, dst_wav, dst_mp3) tuples built after file moves, written in one DB txn
+        committed: list[tuple[str, str, dict, Path, Path]] = []  # type: ignore[type-arg]
 
         if accepted_ids:
             wav_dir.mkdir(parents=True, exist_ok=True)
             mp3_dir.mkdir(parents=True, exist_ok=True)
 
-            placeholders = ",".join("?" * len(accepted_ids))
-            seg_rows = self._conn.execute(
-                f"SELECT * FROM ingest_segments WHERE id IN ({placeholders})",
-                accepted_ids,
-            ).fetchall()
-            seg_by_id = {row["id"]: self._row_to_dict(row) for row in seg_rows}
+            with self._lock:
+                placeholders = ",".join("?" * len(accepted_ids))
+                seg_rows = self._conn.execute(
+                    f"SELECT * FROM ingest_segments WHERE id IN ({placeholders})",
+                    accepted_ids,
+                ).fetchall()
+                seg_by_id = {row["id"]: self._row_to_dict(row) for row in seg_rows}
 
+            # File moves happen outside the lock (filesystem, not DB)
             for seg_id in accepted_ids:
                 seg = seg_by_id.get(seg_id)
                 if seg is None:
                     continue
-
                 meow_id = str(uuid.uuid4())
                 src_wav = Path(seg["wav_path"])
                 dst_wav = wav_dir / f"{meow_id}.wav"
                 dst_mp3 = mp3_dir / f"{meow_id}.mp3"
                 shutil.move(str(src_wav), dst_wav)
                 shutil.move(str(src_wav.with_suffix(".mp3")), dst_mp3)
+                committed.append((seg_id, meow_id, seg, dst_wav, dst_mp3))
+                new_meow_ids.append(meow_id)
+
+        # All DB writes in a single lock acquisition to preserve transaction atomicity
+        with self._lock:
+            for seg_id, meow_id, seg, dst_wav, dst_mp3 in committed:
                 self._conn.execute(
                     """
                     INSERT INTO meows
@@ -380,31 +414,32 @@ class MeowDB:
                 self._conn.execute(
                     "UPDATE ingest_segments SET status = 'accepted' WHERE id = ?", (seg_id,)
                 )
-                new_meow_ids.append(meow_id)
 
-        for seg_id in rejected_ids:
+            for seg_id in rejected_ids:
+                self._conn.execute(
+                    "UPDATE ingest_segments SET status = 'rejected' WHERE id = ?", (seg_id,)
+                )
+
             self._conn.execute(
-                "UPDATE ingest_segments SET status = 'rejected' WHERE id = ?", (seg_id,)
+                "UPDATE ingest_jobs SET status = 'committed', updated_at = datetime('now') WHERE id = ?",
+                (job_id,),
             )
-
-        self._conn.execute(
-            "UPDATE ingest_jobs SET status = 'committed', updated_at = datetime('now') WHERE id = ?",
-            (job_id,),
-        )
-        self._conn.commit()
+            self._conn.commit()
         return new_meow_ids
 
     def delete_job(self, job_id: str) -> None:
         # ON DELETE CASCADE removes segments automatically
-        self._conn.execute("DELETE FROM ingest_jobs WHERE id = ?", (job_id,))
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM ingest_jobs WHERE id = ?", (job_id,))
+            self._conn.commit()
 
     # -------------------------------------------------------------------------
     # Stats
     # -------------------------------------------------------------------------
 
     def _count_labels(self) -> dict[str, int]:
-        rows = self._conn.execute("SELECT labels FROM meows").fetchall()
+        with self._lock:
+            rows = self._conn.execute("SELECT labels FROM meows").fetchall()
         counts: dict[str, int] = {}
         for row in rows:
             for label in json.loads(row["labels"]):
@@ -412,30 +447,34 @@ class MeowDB:
         return counts
 
     def get_stats(self) -> dict:  # type: ignore[type-arg]
-        agg = self._conn.execute(
-            """
-            SELECT
-                COUNT(*) AS total_meows,
-                COALESCE(SUM(duration_ms), 0) AS total_duration_ms,
-                COALESCE(AVG(duration_ms), 0) AS avg_duration_ms,
-                MIN(created_at) AS first_meow_at
-            FROM meows
-            """
-        ).fetchone()
+        with self._lock:
+            agg = self._conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_meows,
+                    COALESCE(SUM(duration_ms), 0) AS total_duration_ms,
+                    COALESCE(AVG(duration_ms), 0) AS avg_duration_ms,
+                    MIN(created_at) AS first_meow_at
+                FROM meows
+                """
+            ).fetchone()
 
-        most_played = [
-            self._row_to_dict(r)
-            for r in self._conn.execute(
-                "SELECT * FROM meows ORDER BY play_count DESC LIMIT 5"
-            ).fetchall()
-        ]
+            most_played = [
+                self._row_to_dict(r)
+                for r in self._conn.execute(
+                    "SELECT * FROM meows ORDER BY play_count DESC LIMIT 5"
+                ).fetchall()
+            ]
 
-        recent = [
-            self._row_to_dict(r)
-            for r in self._conn.execute(
-                "SELECT * FROM meows ORDER BY created_at DESC LIMIT 10"
-            ).fetchall()
-        ]
+            recent = [
+                self._row_to_dict(r)
+                for r in self._conn.execute(
+                    "SELECT * FROM meows ORDER BY created_at DESC LIMIT 10"
+                ).fetchall()
+            ]
+
+            # RLock allows reentry so _count_labels() can acquire the same lock
+            label_counts = self._count_labels()
 
         return {
             "total_meows": agg["total_meows"],
@@ -444,7 +483,7 @@ class MeowDB:
             "first_meow_at": agg["first_meow_at"],
             "most_played": most_played,
             "recent": recent,
-            "label_counts": self._count_labels(),
+            "label_counts": label_counts,
         }
 
     def get_labels(self) -> list[dict]:  # type: ignore[type-arg]
@@ -460,39 +499,49 @@ class MeowDB:
     ) -> str:
         if photo_id is None:
             photo_id = str(uuid.uuid4())
-        self._conn.execute(
-            "INSERT INTO cat_photos (id, filename, is_default) VALUES (?, ?, ?)",
-            (photo_id, filename, is_default),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO cat_photos (id, filename, is_default) VALUES (?, ?, ?)",
+                (photo_id, filename, is_default),
+            )
+            self._conn.commit()
         return photo_id
 
     def get_photos(self) -> list[dict]:  # type: ignore[type-arg]
-        rows = self._conn.execute("SELECT * FROM cat_photos ORDER BY created_at DESC").fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM cat_photos ORDER BY created_at DESC"
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def get_random_photo(self, exclude_id: str | None = None) -> dict | None:  # type: ignore[type-arg]
-        if exclude_id:
-            row = self._conn.execute(
-                "SELECT * FROM cat_photos WHERE id != ? ORDER BY RANDOM() LIMIT 1", (exclude_id,)
-            ).fetchone()
-            if row is None:
+        with self._lock:
+            if exclude_id:
+                row = self._conn.execute(
+                    "SELECT * FROM cat_photos WHERE id != ? ORDER BY RANDOM() LIMIT 1",
+                    (exclude_id,),
+                ).fetchone()
+                if row is None:
+                    row = self._conn.execute(
+                        "SELECT * FROM cat_photos ORDER BY RANDOM() LIMIT 1"
+                    ).fetchone()
+            else:
                 row = self._conn.execute(
                     "SELECT * FROM cat_photos ORDER BY RANDOM() LIMIT 1"
                 ).fetchone()
-        else:
-            row = self._conn.execute(
-                "SELECT * FROM cat_photos ORDER BY RANDOM() LIMIT 1"
-            ).fetchone()
         return dict(row) if row else None
 
     def get_photo(self, photo_id: str) -> dict | None:  # type: ignore[type-arg]
-        row = self._conn.execute("SELECT * FROM cat_photos WHERE id = ?", (photo_id,)).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM cat_photos WHERE id = ?", (photo_id,)
+            ).fetchone()
         return dict(row) if row else None
 
     def delete_photo(self, photo_id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM cat_photos WHERE id = ?", (photo_id,))
-        self._conn.commit()
+        with self._lock:
+            cursor = self._conn.execute("DELETE FROM cat_photos WHERE id = ?", (photo_id,))
+            self._conn.commit()
         return cursor.rowcount > 0
 
     # -------------------------------------------------------------------------
@@ -500,23 +549,26 @@ class MeowDB:
     # -------------------------------------------------------------------------
 
     def update_fingerprint(self, meow_id: str, fingerprint: list[float]) -> None:
-        self._conn.execute(
-            "UPDATE meows SET meow_fingerprint = ? WHERE id = ?",
-            (json.dumps(fingerprint), meow_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "UPDATE meows SET meow_fingerprint = ? WHERE id = ?",
+                (json.dumps(fingerprint), meow_id),
+            )
+            self._conn.commit()
 
     def update_uniqueness_scores_bulk(self, scores: dict[str, float]) -> None:
-        self._conn.executemany(
-            "UPDATE meows SET uniqueness_score = ? WHERE id = ?",
-            [(score, meow_id) for meow_id, score in scores.items()],
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.executemany(
+                "UPDATE meows SET uniqueness_score = ? WHERE id = ?",
+                [(score, meow_id) for meow_id, score in scores.items()],
+            )
+            self._conn.commit()
 
     def get_all_fingerprints(self) -> dict[str, list[float]]:
-        rows = self._conn.execute(
-            "SELECT id, meow_fingerprint FROM meows WHERE meow_fingerprint IS NOT NULL"
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, meow_fingerprint FROM meows WHERE meow_fingerprint IS NOT NULL"
+            ).fetchall()
         return {
             row["id"]: json.loads(row["meow_fingerprint"])
             for row in rows
@@ -524,5 +576,6 @@ class MeowDB:
         }
 
     def get_all_wav_paths(self) -> list[dict]:  # type: ignore[type-arg]
-        rows = self._conn.execute("SELECT id, wav_path FROM meows").fetchall()
+        with self._lock:
+            rows = self._conn.execute("SELECT id, wav_path FROM meows").fetchall()
         return [dict(r) for r in rows]
