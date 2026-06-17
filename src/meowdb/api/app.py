@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
@@ -32,6 +33,28 @@ from meowdb.config import (
 _STATIC_DIR = Path(__file__).parent.parent / "static"
 _INDEX_HTML = _STATIC_DIR / "index.html"
 _logger = logging.getLogger(__name__)
+_HASHED_ASSET_RE = re.compile(r"\.[0-9a-f]{8}\.(js|css)$")
+
+
+def _migrate_photos(db: Any, logger: logging.Logger) -> None:
+    from meowdb.photos import optimize_photo
+
+    photos = db.get_photos()
+    migrated = 0
+    for photo in photos:
+        if photo["filename"].endswith(".webp"):
+            continue
+        orig_path = PHOTOS_DIR / photo["filename"]
+        if not orig_path.exists():
+            logger.warning("Migration: photo file missing, skipping: %s", orig_path)
+            continue
+        optimized_path = optimize_photo(orig_path)
+        db.update_photo_filename(photo["id"], optimized_path.name)
+        orig_path.unlink(missing_ok=True)
+        logger.info("Migration: converted %s → %s", orig_path.name, optimized_path.name)
+        migrated += 1
+    if migrated == 0:
+        logger.info("Migration: no photos needed conversion")
 
 
 @asynccontextmanager
@@ -54,6 +77,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
         directory.mkdir(parents=True, exist_ok=True)
 
     app.state.db = MeowDB(DB_PATH)
+    _migrate_photos(app.state.db, _logger)
     yield
     app.state.db.close()
 
@@ -62,7 +86,10 @@ class _NoCacheStaticMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable[[Request], Any]) -> Response:
         response: Response = await call_next(request)
         if request.url.path.startswith("/static/"):
-            response.headers["Cache-Control"] = "no-cache"
+            if _HASHED_ASSET_RE.search(request.url.path):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            else:
+                response.headers["Cache-Control"] = "no-cache"
         return response
 
 
@@ -103,6 +130,6 @@ def create_app() -> FastAPI:
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_catch_all(full_path: str, request: Request) -> FileResponse:
-        return FileResponse(str(_INDEX_HTML))
+        return FileResponse(str(_INDEX_HTML), headers={"Cache-Control": "no-cache"})
 
     return app

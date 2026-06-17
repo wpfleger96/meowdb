@@ -32,7 +32,12 @@ async def _stream_range(path: Path, start: int, end: int) -> AsyncGenerator[byte
             yield chunk
 
 
-def stream_file(path: Path, request: Request, media_type: str) -> StreamingResponse:
+def stream_file(
+    path: Path,
+    request: Request,
+    media_type: str,
+    extra_headers: dict[str, str] | None = None,
+) -> StreamingResponse:
     file_size = path.stat().st_size
     range_header = request.headers.get("range")
 
@@ -53,6 +58,8 @@ def stream_file(path: Path, request: Request, media_type: str) -> StreamingRespo
             "Accept-Ranges": "bytes",
             "Content-Length": str(content_length),
         }
+        if extra_headers:
+            headers.update(extra_headers)
         return StreamingResponse(
             _stream_range(path, start, end),
             status_code=206,
@@ -64,6 +71,8 @@ def stream_file(path: Path, request: Request, media_type: str) -> StreamingRespo
         "Accept-Ranges": "bytes",
         "Content-Length": str(file_size),
     }
+    if extra_headers:
+        headers.update(extra_headers)
     return StreamingResponse(
         _stream_range(path, 0, file_size - 1),
         status_code=200,
