@@ -13,7 +13,20 @@ from meowdb.config import MP3_DIR, STAGING_DIR, WAV_DIR
 from meowdb.display import console, print_error, print_hint, print_info, print_success
 from meowdb.models import ProcessingResult
 
-_AUDIO_EXTENSIONS = {".m4a", ".mp3", ".wav"}
+_SUPPORTED_EXTENSIONS = {
+    ".m4a",
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".flac",
+    ".aac",
+    ".webm",
+    ".mov",
+    ".mp4",
+    ".avi",
+    ".mkv",
+    ".3gp",
+}
 
 # Files shorter than this are treated as single-meow clips
 _SINGLE_MEOW_THRESHOLD_MS = 8000
@@ -46,12 +59,14 @@ def ingest(
     dry_run: bool,
     db_path: str | None,
 ) -> None:
-    """Ingest an audio file or directory into the meow library."""
+    """Ingest an audio or video file or directory into the meow library."""
     ctx = build_context(Path(db_path) if db_path else None)
 
     source = Path(path)
     if source.is_dir():
-        audio_files = sorted(f for f in source.iterdir() if f.suffix.lower() in _AUDIO_EXTENSIONS)
+        audio_files = sorted(
+            f for f in source.iterdir() if f.suffix.lower() in _SUPPORTED_EXTENSIONS
+        )
         if not audio_files:
             print_error(f"No audio files found in {source}")
             ctx.db.close()

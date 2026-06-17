@@ -52,7 +52,21 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024
-_ALLOWED_SUFFIXES = {".m4a", ".mp3", ".wav", ".ogg", ".flac", ".aac", ".webm"}
+_ALLOWED_SUFFIXES = {
+    ".m4a",
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".flac",
+    ".aac",
+    ".webm",
+    ".mov",
+    ".mp4",
+    ".avi",
+    ".mkv",
+    ".3gp",
+}
+_VIDEO_SUFFIXES = {".mov", ".mp4", ".avi", ".mkv", ".3gp"}
 
 
 def _seg_to_response(seg: dict, job_id: str) -> IngestSegmentResponse:  # type: ignore[type-arg]
@@ -90,6 +104,21 @@ def _resolve_source(job_id: str) -> Path:
     return source_files[0]
 
 
+def _extract_audio_from_video(source_path: Path, staging_dir: Path) -> None:
+    from pydub import AudioSegment
+
+    audio_path = staging_dir / "source_audio.wav"
+    try:
+        audio = AudioSegment.from_file(str(source_path))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail="Could not extract audio from video file"
+        ) from exc
+    if len(audio) == 0:
+        raise HTTPException(status_code=400, detail="Video file contains no audio track")
+    audio.export(str(audio_path), format="wav")
+
+
 @router.post("/ingest", response_model=IngestJobResponse, status_code=202)
 async def create_ingest_job(
     request: Request,
@@ -123,6 +152,14 @@ async def create_ingest_job(
             dest.write(chunk)
 
     db.update_job_status(job_id, "uploaded")
+
+    if suffix in _VIDEO_SUFFIXES:
+        try:
+            await run_in_threadpool(_extract_audio_from_video, temp_path, job_staging_dir)
+        except HTTPException:
+            shutil.rmtree(job_staging_dir, ignore_errors=True)
+            db.delete_job(job_id)
+            raise
 
     return IngestJobResponse(
         job_id=job_id,
@@ -244,6 +281,20 @@ _SOURCE_MEDIA_TYPES = {
 }
 
 
+def _resolve_source_audio(job_id: str) -> Path:
+    """Return source_audio.wav for video uploads, original source file for audio uploads."""
+    candidate = (STAGING_DIR / job_id).resolve()
+    if not str(candidate).startswith(str(STAGING_DIR.resolve())):
+        raise HTTPException(status_code=403, detail="Access denied")
+    audio_path = candidate / "source_audio.wav"
+    if audio_path.exists():
+        return audio_path
+    source_files = list(candidate.glob("source.*"))
+    if not source_files:
+        raise HTTPException(status_code=404, detail="Source file not found")
+    return source_files[0]
+
+
 @router.get("/ingest/{job_id}/source")
 async def stream_source_audio(job_id: str, request: Request) -> StreamingResponse:
     db = request.app.state.db
@@ -251,7 +302,7 @@ async def stream_source_audio(job_id: str, request: Request) -> StreamingRespons
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    source_path = _resolve_source(job_id)
+    source_path = _resolve_source_audio(job_id)
     media_type = _SOURCE_MEDIA_TYPES.get(source_path.suffix.lower(), "application/octet-stream")
     return stream_file(source_path, request, media_type)
 
