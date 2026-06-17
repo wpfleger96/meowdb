@@ -131,9 +131,11 @@ function ingestView() {
       }
 
       this.$nextTick(() => {
-        for (const job of successJobs) {
-          if (!this._resetting) this._initWaveSurferForJob(job);
-        }
+        requestAnimationFrame(() => {
+          for (const job of successJobs) {
+            if (!this._resetting) this._initWaveSurferForJob(job);
+          }
+        });
       });
     },
 
@@ -196,7 +198,10 @@ function ingestView() {
 
     _initWaveSurferForJob(job) {
       const container = document.getElementById(job.containerId);
-      if (!container) return;
+      if (!container) {
+        console.warn('WaveSurfer container not found:', job.containerId);
+        return;
+      }
 
       const regionsPlugin = WaveSurfer.Regions.create();
       regionsPlugin.__v_skip = true;
