@@ -3,6 +3,7 @@
 import hashlib
 import re
 import shutil
+
 from pathlib import Path
 
 STATIC_DIR = Path("src/meowdb/static")
