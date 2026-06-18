@@ -9,24 +9,9 @@ import click
 from meowdb.cli.context import Context
 from meowdb.cli.helpers import build_context, format_duration, play_audio
 from meowdb.cli.options import db_path_option
-from meowdb.config import MP3_DIR, STAGING_DIR, WAV_DIR
+from meowdb.config import ALLOWED_MEDIA_SUFFIXES, MP3_DIR, STAGING_DIR, WAV_DIR
 from meowdb.display import console, print_error, print_hint, print_info, print_success
 from meowdb.models import ProcessingResult
-
-_SUPPORTED_EXTENSIONS = {
-    ".m4a",
-    ".mp3",
-    ".wav",
-    ".ogg",
-    ".flac",
-    ".aac",
-    ".webm",
-    ".mov",
-    ".mp4",
-    ".avi",
-    ".mkv",
-    ".3gp",
-}
 
 # Files shorter than this are treated as single-meow clips
 _SINGLE_MEOW_THRESHOLD_MS = 8000
@@ -65,7 +50,7 @@ def ingest(
     source = Path(path)
     if source.is_dir():
         audio_files = sorted(
-            f for f in source.iterdir() if f.suffix.lower() in _SUPPORTED_EXTENSIONS
+            f for f in source.iterdir() if f.suffix.lower() in ALLOWED_MEDIA_SUFFIXES
         )
         if not audio_files:
             print_error(f"No audio files found in {source}")
