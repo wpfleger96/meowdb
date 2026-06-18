@@ -28,3 +28,11 @@ PASSWORD_HASH: str = os.environ.get("MEOWDB_PASSWORD_HASH", "")
 _DEFAULT_SESSION_SECRET = "local-dev-secret-not-for-production"
 SESSION_SECRET: str = os.environ.get("MEOWDB_SESSION_SECRET", _DEFAULT_SESSION_SECRET)
 IS_LOCALHOST: bool = HOST in ("127.0.0.1", "localhost")
+
+# Upload formats accepted by the web picker, the /ingest API, and the CLI.
+# Video files have their audio track extracted; everything else is treated as audio.
+AUDIO_SUFFIXES = {".m4a", ".mp3", ".wav", ".ogg", ".flac", ".aac", ".webm"}
+VIDEO_SUFFIXES = {".mov", ".mp4", ".avi", ".mkv", ".3gp"}
+ALLOWED_MEDIA_SUFFIXES = AUDIO_SUFFIXES | VIDEO_SUFFIXES
+# Comma-joined form the server injects into the upload picker's `accept` attribute.
+UPLOAD_ACCEPT = ",".join(sorted(ALLOWED_MEDIA_SUFFIXES))

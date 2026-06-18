@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -27,6 +27,7 @@ from meowdb.config import (
     PHOTOS_DIR,
     SESSION_SECRET,
     STAGING_DIR,
+    UPLOAD_ACCEPT,
     WAV_DIR,
 )
 
@@ -129,7 +130,8 @@ def create_app() -> FastAPI:
         return JSONResponse({"status": "ok"})
 
     @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa_catch_all(full_path: str, request: Request) -> FileResponse:
-        return FileResponse(str(_INDEX_HTML), headers={"Cache-Control": "no-cache"})
+    async def spa_catch_all(full_path: str, request: Request) -> HTMLResponse:
+        html = _INDEX_HTML.read_text(encoding="utf-8").replace("{{UPLOAD_ACCEPT}}", UPLOAD_ACCEPT)
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
     return app

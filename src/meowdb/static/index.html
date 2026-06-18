@@ -673,7 +673,7 @@
           </div>
           <input
             type="file"
-            accept="audio/*,video/*"
+            accept="{{UPLOAD_ACCEPT}}"
             multiple
             x-ref="fileInput"
             @change="onFileChange($event)"
