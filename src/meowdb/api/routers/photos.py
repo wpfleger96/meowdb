@@ -5,7 +5,7 @@ import os
 import tempfile
 import uuid
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
@@ -37,8 +37,8 @@ _MEDIA_TYPES = {
 
 def _cache_version(dt_str: str) -> int:
     try:
-        return int(datetime.fromisoformat(dt_str).replace(tzinfo=timezone.utc).timestamp())
-    except (ValueError, TypeError):
+        return int(datetime.fromisoformat(dt_str).replace(tzinfo=UTC).timestamp())
+    except ValueError, TypeError:
         return 0
 
 
@@ -228,9 +228,6 @@ async def edit_photo(
 
     if new_filename is not None:
         db.update_photo_filename(photo_id, new_filename)
-
-    db.touch_photo(photo_id)
-    photo = db.get_photo(photo_id)
-    if photo is None:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    return _photo_to_response(photo)
+    else:
+        db.touch_photo(photo_id)
+    return _photo_to_response(db.get_photo(photo_id))

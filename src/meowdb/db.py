@@ -103,9 +103,7 @@ class MeowDB:
             except sqlite3.OperationalError:
                 pass  # column already exists
         try:
-            self._conn.execute(
-                "ALTER TABLE cat_photos ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))"
-            )
+            self._conn.execute("ALTER TABLE cat_photos ADD COLUMN updated_at TEXT")
         except sqlite3.OperationalError:
             pass  # column already exists
         self._conn.commit()
@@ -540,7 +538,7 @@ class MeowDB:
     def update_photo_filename(self, photo_id: str, filename: str) -> None:
         with self._lock:
             self._conn.execute(
-                "UPDATE cat_photos SET filename = ? WHERE id = ?",
+                "UPDATE cat_photos SET filename = ?, updated_at = datetime('now') WHERE id = ?",
                 (filename, photo_id),
             )
             self._conn.commit()
