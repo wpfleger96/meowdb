@@ -287,11 +287,6 @@ async function deletePhoto(id) {
   return apiFetch(`/photos/${id}`, { method: 'DELETE' });
 }
 
-/**
- * @param {string} id
- * @param {object} body  e.g. { action: 'rotate', direction: 'cw' }
- * @returns {Promise<object>} PhotoResponse
- */
 async function editPhoto(id, body) {
   return apiFetch(`/photos/${id}/edit`, {
     method: 'POST',

@@ -72,7 +72,9 @@ function photosView() {
       this.detailPhoto = null;
       this.showDeleteConfirm = false;
       this.isCropping = false;
+      this.isEditing = false;
       this._cropImg = null;
+      this._cropCanvas = null;
       this._cropDrag = null;
     },
 
@@ -148,39 +150,27 @@ function photosView() {
       }
     },
 
-    async rotateCW() {
+    async _runEdit(body) {
+      if (this.authRequired && !this.authenticated) { this.showLoginModal = true; return; }
       this.isEditing = true;
-      await this.doEdit({ action: 'rotate', direction: 'cw' });
-      this.isEditing = false;
+      try { await this.doEdit(body); } finally { this.isEditing = false; }
     },
 
-    async rotateCCW() {
-      this.isEditing = true;
-      await this.doEdit({ action: 'rotate', direction: 'ccw' });
-      this.isEditing = false;
-    },
-
-    async flipH() {
-      this.isEditing = true;
-      await this.doEdit({ action: 'flip', axis: 'horizontal' });
-      this.isEditing = false;
-    },
-
-    async flipV() {
-      this.isEditing = true;
-      await this.doEdit({ action: 'flip', axis: 'vertical' });
-      this.isEditing = false;
-    },
+    async rotateCW() { await this._runEdit({ action: 'rotate', direction: 'cw' }); },
+    async rotateCCW() { await this._runEdit({ action: 'rotate', direction: 'ccw' }); },
+    async flipH() { await this._runEdit({ action: 'flip', axis: 'horizontal' }); },
+    async flipV() { await this._runEdit({ action: 'flip', axis: 'vertical' }); },
 
     startCrop() {
       this.isCropping = true;
       this.cropRect = { x: 0.1, y: 0.1, width: 0.8, height: 0.8 };
-      this.$nextTick(() => this._initCropCanvas());
+      this.$nextTick(() => requestAnimationFrame(() => this._initCropCanvas()));
     },
 
     cancelCrop() {
       this.isCropping = false;
       this._cropImg = null;
+      this._cropCanvas = null;
       this._cropDrag = null;
     },
 
@@ -207,19 +197,27 @@ function photosView() {
       img.src = this.detailPhoto.image_url;
     },
 
+    _imgLayout(canvas) {
+      const img = this._cropImg;
+      if (!img) return null;
+      const cw = canvas.width, ch = canvas.height;
+      const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
+      const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+      const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+      return { cw, ch, scale, dw, dh, dx, dy };
+    },
+
     _drawCrop() {
       const canvas = this._cropCanvas;
       if (!canvas || !this._cropImg) return;
-      const cw = canvas.width = canvas.offsetWidth;
-      const ch = canvas.height = canvas.offsetHeight;
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
       const ctx = canvas.getContext('2d');
       const img = this._cropImg;
+      const layout = this._imgLayout(canvas);
+      if (!layout) return;
+      const { cw, ch, dw, dh, dx, dy } = layout;
 
-      const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
-      const dw = img.naturalWidth * scale;
-      const dh = img.naturalHeight * scale;
-      const dx = (cw - dw) / 2;
-      const dy = (ch - dh) / 2;
       ctx.clearRect(0, 0, cw, ch);
       ctx.drawImage(img, dx, dy, dw, dh);
 
@@ -229,14 +227,14 @@ function photosView() {
       const rw = r.width * dw;
       const rh = r.height * dh;
 
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, cw, ch);
+      ctx.rect(rx, ry, rw, rh);
+      ctx.clip('evenodd');
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, 0, cw, ch);
-      ctx.clearRect(rx, ry, rw, rh);
-      ctx.drawImage(img,
-        r.x * img.naturalWidth, r.y * img.naturalHeight,
-        r.width * img.naturalWidth, r.height * img.naturalHeight,
-        rx, ry, rw, rh
-      );
+      ctx.restore();
 
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
@@ -250,12 +248,9 @@ function photosView() {
     },
 
     _cropHitTest(cx, cy, canvas) {
-      const img = this._cropImg;
-      if (!img) return null;
-      const cw = canvas.width, ch = canvas.height;
-      const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
-      const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
-      const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+      const layout = this._imgLayout(canvas);
+      if (!layout) return null;
+      const { dw, dh, dx, dy } = layout;
       const r = this.cropRect;
       const rx = dx + r.x * dw, ry = dy + r.y * dh;
       const rw = r.width * dw, rh = r.height * dh;
@@ -280,12 +275,9 @@ function photosView() {
     },
 
     _fracCoords(px, py, canvas) {
-      const img = this._cropImg;
-      if (!img) return { fx: 0, fy: 0 };
-      const cw = canvas.width, ch = canvas.height;
-      const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
-      const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
-      const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+      const layout = this._imgLayout(canvas);
+      if (!layout) return { fx: 0, fy: 0 };
+      const { dw, dh, dx, dy } = layout;
       return {
         fx: Math.max(0, Math.min(1, (px - dx) / dw)),
         fy: Math.max(0, Math.min(1, (py - dy) / dh)),
@@ -300,6 +292,11 @@ function photosView() {
       const { x, y } = this._canvasPos(e, canvas);
       const hit = this._cropHitTest(x, y, canvas);
       this._cropDrag = { ...hit, startX: x, startY: y, origRect: { ...this.cropRect } };
+      if (hit.type === 'create') {
+        const { fx, fy } = this._fracCoords(x, y, canvas);
+        this._cropDrag.startFx = fx;
+        this._cropDrag.startFy = fy;
+      }
     },
 
     onCropPointerMove(e) {
@@ -308,10 +305,9 @@ function photosView() {
       const canvas = this._cropCanvas;
       const { x, y } = this._canvasPos(e, canvas);
       const dx = x - this._cropDrag.startX, dy = y - this._cropDrag.startY;
-      const img = this._cropImg;
-      const cw = canvas.width, ch = canvas.height;
-      const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
-      const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+      const layout = this._imgLayout(canvas);
+      if (!layout) return;
+      const { dw, dh } = layout;
       const dfx = dx / dw, dfy = dy / dh;
       const orig = this._cropDrag.origRect;
       const MIN = 0.05;
@@ -346,7 +342,7 @@ function photosView() {
         }
         this.cropRect = { x: rx, y: ry, width: rw, height: rh };
       } else { // create
-        const { fx: fx0, fy: fy0 } = this._fracCoords(this._cropDrag.startX, this._cropDrag.startY, canvas);
+        const fx0 = this._cropDrag.startFx, fy0 = this._cropDrag.startFy;
         const { fx: fx1, fy: fy1 } = this._fracCoords(x, y, canvas);
         const cx = Math.min(fx0, fx1), cy = Math.min(fy0, fy1);
         const cw2 = Math.max(MIN, Math.abs(fx1 - fx0));

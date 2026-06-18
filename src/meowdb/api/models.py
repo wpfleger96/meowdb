@@ -153,9 +153,9 @@ class PhotoEditRequest(BaseModel):
                 raise ValueError("width must be in (0, 1]")
             if not (0.0 < self.height <= 1.0):
                 raise ValueError("height must be in (0, 1]")
-            if self.x + self.width > 1.0:
+            if self.x + self.width > 1.0 + 1e-9:
                 raise ValueError("x + width must be <= 1")
-            if self.y + self.height > 1.0:
+            if self.y + self.height > 1.0 + 1e-9:
                 raise ValueError("y + height must be <= 1")
         return self
 

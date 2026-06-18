@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import uuid
 
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from PIL import Image
+from PIL import Image, ImageOps
+from starlette.concurrency import run_in_threadpool
 
 from meowdb.api.auth import require_auth
 from meowdb.api.models import PhotoEditRequest, PhotoListResponse, PhotoResponse
@@ -149,6 +152,43 @@ async def delete_photo(
     db.delete_photo(photo_id)
 
 
+def _apply_edit(path: Path, body: PhotoEditRequest) -> tuple[Path, str | None]:
+    """Returns (final_path, new_filename_if_changed)."""
+    with Image.open(path) as raw:
+        img = ImageOps.exif_transpose(raw)
+        if body.action == "rotate":
+            method = (
+                Image.Transpose.ROTATE_270 if body.direction == "cw" else Image.Transpose.ROTATE_90
+            )
+            result = img.transpose(method)
+        elif body.action == "flip":
+            method = (
+                Image.Transpose.FLIP_LEFT_RIGHT
+                if body.axis == "horizontal"
+                else Image.Transpose.FLIP_TOP_BOTTOM
+            )
+            result = img.transpose(method)
+        else:  # crop
+            w, h = img.size
+            left = round(body.x * w)  # type: ignore[operator]
+            upper = round(body.y * h)  # type: ignore[operator]
+            right = round((body.x + body.width) * w)  # type: ignore[operator]
+            lower = round((body.y + body.height) * h)  # type: ignore[operator]
+            result = img.crop((left, upper, right, lower))
+
+    if path.suffix.lower() != ".webp":
+        new_path = path.with_suffix(".webp")
+        result.save(new_path, format="WEBP", quality=85)
+        path.unlink(missing_ok=True)
+        return new_path, new_path.name
+    else:
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".webp", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        result.save(tmp_path, format="WEBP", quality=85)
+        os.replace(tmp_path, path)
+        return path, None
+
+
 @router.post("/photos/{photo_id}/edit", response_model=PhotoResponse)
 async def edit_photo(
     photo_id: str,
@@ -171,34 +211,13 @@ async def edit_photo(
         raise HTTPException(status_code=403, detail="Access denied") from None
 
     try:
-        with Image.open(path) as img:
-            if body.action == "rotate":
-                method = (
-                    Image.Transpose.ROTATE_270
-                    if body.direction == "cw"
-                    else Image.Transpose.ROTATE_90
-                )
-                result = img.transpose(method)
-            elif body.action == "flip":
-                method = (
-                    Image.Transpose.FLIP_LEFT_RIGHT
-                    if body.axis == "horizontal"
-                    else Image.Transpose.FLIP_TOP_BOTTOM
-                )
-                result = img.transpose(method)
-            else:  # crop
-                assert body.x is not None and body.y is not None
-                assert body.width is not None and body.height is not None
-                w, h = img.size
-                left = int(body.x * w)
-                upper = int(body.y * h)
-                right = int((body.x + body.width) * w)
-                lower = int((body.y + body.height) * h)
-                result = img.crop((left, upper, right, lower))
-            result.save(path, format="WEBP", quality=85)
-    except Exception as exc:
+        _final_path, new_filename = await run_in_threadpool(_apply_edit, path, body)
+    except (OSError, ValueError) as exc:
         _logger.warning("Photo edit failed for %s: %s", photo_id, exc)
         raise HTTPException(status_code=500, detail="Failed to edit photo") from exc
 
-    photo = db.get_photo(photo_id)
+    if new_filename is not None:
+        db.update_photo_filename(photo_id, new_filename)
+        photo = {**photo, "filename": new_filename}
+
     return _photo_to_response(photo)
