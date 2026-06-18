@@ -287,6 +287,14 @@ async function deletePhoto(id) {
   return apiFetch(`/photos/${id}`, { method: 'DELETE' });
 }
 
+async function editPhoto(id, body) {
+  return apiFetch(`/photos/${id}/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 /* ============================================================
    Uniqueness
    ============================================================ */
