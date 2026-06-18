@@ -34,3 +34,5 @@ IS_LOCALHOST: bool = HOST in ("127.0.0.1", "localhost")
 AUDIO_SUFFIXES = {".m4a", ".mp3", ".wav", ".ogg", ".flac", ".aac", ".webm"}
 VIDEO_SUFFIXES = {".mov", ".mp4", ".avi", ".mkv", ".3gp"}
 ALLOWED_MEDIA_SUFFIXES = AUDIO_SUFFIXES | VIDEO_SUFFIXES
+# Comma-joined form the server injects into the upload picker's `accept` attribute.
+UPLOAD_ACCEPT = ",".join(sorted(ALLOWED_MEDIA_SUFFIXES))

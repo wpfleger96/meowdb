@@ -1,36 +1,27 @@
 from __future__ import annotations
 
-from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
 
 import meowdb
 
-from meowdb.config import ALLOWED_MEDIA_SUFFIXES
+from meowdb.config import ALLOWED_MEDIA_SUFFIXES, UPLOAD_ACCEPT
 
 _INDEX_HTML = Path(meowdb.__file__).parent / "static" / "index.html"
 
 
-class _AcceptExtractor(HTMLParser):
-    """Pulls the `accept` value off the audio/video upload <input>."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.accept: str | None = None
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag != "input":
-            return
-        attr = dict(attrs)
-        if attr.get("x-ref") == "fileInput":
-            self.accept = attr.get("accept")
+@pytest.mark.unit
+def test_upload_accept_derived_from_allowed_suffixes() -> None:
+    assert set(UPLOAD_ACCEPT.split(",")) == ALLOWED_MEDIA_SUFFIXES
 
 
 @pytest.mark.unit
-def test_picker_accept_matches_allowed_suffixes() -> None:
-    parser = _AcceptExtractor()
-    parser.feed(_INDEX_HTML.read_text(encoding="utf-8"))
-    assert parser.accept is not None, "upload input (x-ref=fileInput) not found"
-    picker = {ext.strip() for ext in parser.accept.split(",")}
-    assert picker == ALLOWED_MEDIA_SUFFIXES
+def test_index_sources_picker_accept_from_config() -> None:
+    html = _INDEX_HTML.read_text(encoding="utf-8")
+    # The accepted-format list lives only in config; the page ships a placeholder
+    # the server fills from UPLOAD_ACCEPT at serve time, so the HTML can't drift.
+    assert 'accept="{{UPLOAD_ACCEPT}}"' in html
+    rendered = html.replace("{{UPLOAD_ACCEPT}}", UPLOAD_ACCEPT)
+    assert "{{UPLOAD_ACCEPT}}" not in rendered
+    assert f'accept="{UPLOAD_ACCEPT}"' in rendered
