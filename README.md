@@ -1,6 +1,9 @@
 # MeowDB
 
+[![GitHub Contributors](https://img.shields.io/github/contributors/wpfleger96/MeowDB.svg)](https://github.com/wpfleger96/MeowDB/graphs/contributors)
 [![CI](https://github.com/wpfleger96/meowdb/actions/workflows/ci.yml/badge.svg)](https://github.com/wpfleger96/meowdb/actions/workflows/ci.yml)
+[![Lines of Code](https://aschey.tech/tokei/github/wpfleger96/MeowDB?category=code)](https://github.com/wpfleger96/MeowDB)
+[![License](https://img.shields.io/github/license/wpfleger96/MeowDB.svg)](https://github.com/wpfleger96/MeowDB/blob/main/LICENSE)
 
 A personal cat meow library. Record, upload, and play back cat meow audio clips. Live at [meowdb.app](https://meowdb.app).
 
