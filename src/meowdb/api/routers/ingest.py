@@ -23,7 +23,7 @@ from meowdb.api.models import (
     IngestSegmentResponse,
 )
 from meowdb.api.streaming import safe_path, stream_file
-from meowdb.config import MP3_DIR, STAGING_DIR, WAV_DIR
+from meowdb.config import ALLOWED_MEDIA_SUFFIXES, MP3_DIR, STAGING_DIR, VIDEO_SUFFIXES, WAV_DIR
 from meowdb.similarity import MeowSimilarity
 
 _similarity = MeowSimilarity()
@@ -52,21 +52,6 @@ router = APIRouter(dependencies=[Depends(require_auth)])
 logger = logging.getLogger(__name__)
 
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024
-_ALLOWED_SUFFIXES = {
-    ".m4a",
-    ".mp3",
-    ".wav",
-    ".ogg",
-    ".flac",
-    ".aac",
-    ".webm",
-    ".mov",
-    ".mp4",
-    ".avi",
-    ".mkv",
-    ".3gp",
-}
-_VIDEO_SUFFIXES = {".mov", ".mp4", ".avi", ".mkv", ".3gp"}
 
 
 def _seg_to_response(seg: dict, job_id: str) -> IngestSegmentResponse:  # type: ignore[type-arg]
@@ -128,7 +113,7 @@ async def create_ingest_job(
 
     source_filename = file.filename or "upload"
     suffix = Path(source_filename).suffix.lower()
-    if suffix not in _ALLOWED_SUFFIXES:
+    if suffix not in ALLOWED_MEDIA_SUFFIXES:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix!r}")
 
     job_id = db.create_job(source_filename)
@@ -153,7 +138,7 @@ async def create_ingest_job(
 
     db.update_job_status(job_id, "uploaded")
 
-    if suffix in _VIDEO_SUFFIXES:
+    if suffix in VIDEO_SUFFIXES:
         try:
             await run_in_threadpool(_extract_audio_from_video, temp_path, job_staging_dir)
         except HTTPException:
