@@ -29,6 +29,10 @@ def main() -> None:
         if not src.is_file():
             continue
 
+        # Service worker must keep a stable URL for browser registration
+        if src.name == "sw.js":
+            continue
+
         # For "alpine.min.js": stem="alpine.min", suffix=".js"
         stem = src.stem
         if already_hashed(stem):
