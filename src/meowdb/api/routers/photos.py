@@ -5,6 +5,7 @@ import os
 import tempfile
 import uuid
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
@@ -34,12 +35,21 @@ _MEDIA_TYPES = {
 }
 
 
+def _cache_version(dt_str: str) -> int:
+    try:
+        return int(datetime.fromisoformat(dt_str).replace(tzinfo=timezone.utc).timestamp())
+    except (ValueError, TypeError):
+        return 0
+
+
 def _photo_to_response(photo: dict) -> PhotoResponse:  # type: ignore[type-arg]
+    v = _cache_version(photo.get("updated_at") or photo.get("created_at", ""))
     return PhotoResponse(
         id=photo["id"],
         filename=photo["filename"],
         created_at=photo.get("created_at", ""),
-        image_url=f"/api/photos/{photo['id']}/image",
+        updated_at=photo.get("updated_at", ""),
+        image_url=f"/api/photos/{photo['id']}/image?v={v}",
         is_default=bool(photo.get("is_default", False)),
     )
 
@@ -218,6 +228,9 @@ async def edit_photo(
 
     if new_filename is not None:
         db.update_photo_filename(photo_id, new_filename)
-        photo = {**photo, "filename": new_filename}
 
+    db.touch_photo(photo_id)
+    photo = db.get_photo(photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Photo not found")
     return _photo_to_response(photo)

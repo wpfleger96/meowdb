@@ -117,6 +117,7 @@ class PhotoResponse(BaseModel):
     id: str
     filename: str
     created_at: str
+    updated_at: str = ""
     image_url: str
     is_default: bool = False
 
