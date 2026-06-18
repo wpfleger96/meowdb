@@ -24,7 +24,6 @@ def _make_icon(size: int, safe_zone: float = 1.0) -> Image.Image:
     face_box = (pad + margin, pad + margin, pad + inner - margin, pad + inner - margin)
     draw.ellipse(face_box, fill=CORAL)
 
-    # Dark bg circle slightly smaller for a ring effect — actually just the face in coral
     # Ear triangles (top-left and top-right)
     cx = pad + inner // 2
     top = pad + margin
@@ -113,7 +112,6 @@ def main() -> None:
 
     for filename, size, safe in sizes:
         img = _make_icon(size, safe)
-        # Convert to RGB for PNG (removes alpha for solid bg icons)
         out_path = OUT / filename
         img.save(out_path, "PNG", optimize=True)
         print(f"  {out_path}")
