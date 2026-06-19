@@ -38,7 +38,7 @@ _MEDIA_TYPES = {
 def _cache_version(dt_str: str) -> int:
     try:
         return int(datetime.fromisoformat(dt_str).replace(tzinfo=UTC).timestamp())
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return 0
 
 
