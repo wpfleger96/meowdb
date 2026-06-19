@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "meowdb"
 version = "0.1.0"
 description = "A personal cat meow library"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "click>=8.1",
     "rich>=13.0",
