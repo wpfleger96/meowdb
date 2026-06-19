@@ -137,13 +137,11 @@ function photosView() {
       if (!this.detailPhoto) return;
       const id = this.detailPhoto.id;
       try {
-        await editPhoto(id, body);
-        const bust = '?v=' + Date.now();
-        const baseUrl = `/api/photos/${id}/image`;
-        this.detailPhoto = { ...this.detailPhoto, image_url: baseUrl + bust };
+        const updated = await editPhoto(id, body);
+        this.detailPhoto = { ...this.detailPhoto, image_url: updated.image_url };
         const idx = this.photos.findIndex(p => p.id === id);
         if (idx !== -1) {
-          this.photos[idx] = { ...this.photos[idx], image_url: baseUrl + bust };
+          this.photos[idx] = { ...this.photos[idx], image_url: updated.image_url };
         }
       } catch (err) {
         showToast(err.message || 'Edit failed', 'error');
