@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/wpfleger96/MeowDB/compare/v0.2.0...v0.3.0) (2026-06-23)
+
+
+### Features
+
+* add thumbs up/down feedback on play page ([#47](https://github.com/wpfleger96/MeowDB/issues/47)) ([058268c](https://github.com/wpfleger96/MeowDB/commit/058268c6b5fe0dcc468933252ecd0a28755cb5ea))
+
+
+### Continuous Integration
+
+* sync CI workflow ([d425f7a](https://github.com/wpfleger96/MeowDB/commit/d425f7aac1e858c1aec7d364931bea765426f763))
+
 ## [0.2.0](https://github.com/wpfleger96/MeowDB/compare/v0.1.0...v0.2.0) (2026-06-22)
 
 
