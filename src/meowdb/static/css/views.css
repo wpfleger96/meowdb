@@ -146,6 +146,56 @@
   color: var(--text-secondary);
 }
 
+/* Feedback buttons (thumbs up/down) */
+.play-feedback {
+  display: flex;
+  gap: var(--sp-3);
+  justify-content: center;
+}
+
+.feedback-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    color var(--trans-fast),
+    background-color var(--trans-fast),
+    border-color var(--trans-fast),
+    transform 0.1s var(--spring);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.feedback-btn:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.feedback-btn:disabled {
+  cursor: default;
+}
+
+.feedback-btn.voted:not(.active) {
+  opacity: 0.3;
+}
+
+.feedback-btn.feedback-up.active {
+  color: var(--green);
+  background: rgba(74, 222, 128, 0.15);
+  border-color: var(--green);
+}
+
+.feedback-btn.feedback-down.active {
+  color: var(--red);
+  background: rgba(248, 113, 113, 0.15);
+  border-color: var(--red);
+}
+
 /* ============================================================
    Library View
    ============================================================ */

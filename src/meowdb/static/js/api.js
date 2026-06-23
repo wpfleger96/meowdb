@@ -106,6 +106,20 @@ async function recordPlay(id) {
   return apiFetch(`/meows/${id}/play`, { method: 'POST' });
 }
 
+/**
+ * Record a feedback vote (fire-and-forget — do not await in hot path).
+ * @param {string} id
+ * @param {'up'|'down'} vote
+ * @returns {Promise<null>}
+ */
+async function recordFeedback(id, vote) {
+  return apiFetch(`/meows/${id}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vote }),
+  });
+}
+
 /* ============================================================
    Ingest / Upload
    ============================================================ */

@@ -247,6 +247,43 @@ def test_increment_play_count(tmp_db: MeowDB) -> None:
     assert result["play_count"] == 2
 
 
+@pytest.mark.unit
+def test_record_feedback_upvote(tmp_db: MeowDB) -> None:
+    meow_id = tmp_db.add(_meow())
+    assert tmp_db.record_feedback(meow_id, is_upvote=True) is True
+    assert tmp_db.record_feedback(meow_id, is_upvote=True) is True
+    result = tmp_db.get_by_id(meow_id)
+    assert result is not None
+    assert result["upvote_count"] == 2
+    assert result["downvote_count"] == 0
+
+
+@pytest.mark.unit
+def test_record_feedback_downvote(tmp_db: MeowDB) -> None:
+    meow_id = tmp_db.add(_meow())
+    assert tmp_db.record_feedback(meow_id, is_upvote=False) is True
+    result = tmp_db.get_by_id(meow_id)
+    assert result is not None
+    assert result["downvote_count"] == 1
+    assert result["upvote_count"] == 0
+
+
+@pytest.mark.unit
+def test_record_feedback_missing_id(tmp_db: MeowDB) -> None:
+    assert tmp_db.record_feedback("nonexistent", is_upvote=True) is False
+
+
+@pytest.mark.unit
+def test_get_all_sort_most_downvoted(tmp_db: MeowDB) -> None:
+    id1 = tmp_db.add(_meow())
+    id2 = tmp_db.add(_meow())
+    tmp_db.record_feedback(id1, is_upvote=False)
+    tmp_db.record_feedback(id2, is_upvote=False)
+    tmp_db.record_feedback(id2, is_upvote=False)
+    results = tmp_db.get_all(sort="most_downvoted")
+    assert results[0]["id"] == id2
+
+
 # =============================================================================
 # Job staging flow
 # =============================================================================

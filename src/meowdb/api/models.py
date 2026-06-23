@@ -11,6 +11,8 @@ class MeowResponse(BaseModel):
     duration_ms: int
     labels: list[str]
     play_count: int
+    upvote_count: int = 0
+    downvote_count: int = 0
     created_at: str
     wav_url: str | None = None
     mp3_url: str | None = None
@@ -64,11 +66,17 @@ class CommitResponse(BaseModel):
     rejected_count: int
 
 
+class FeedbackRequest(BaseModel):
+    vote: Literal["up", "down"]
+
+
 class MeowSummary(BaseModel):
     id: str
     duration_ms: int
     labels: list[str]
     play_count: int
+    upvote_count: int = 0
+    downvote_count: int = 0
     created_at: str
 
 

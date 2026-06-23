@@ -287,6 +287,39 @@ def test_audio_stream_with_data(seeded_client):
 
 
 @pytest.mark.integration
+def test_feedback_upvote(seeded_client):
+    meow_id = seeded_client.get("/api/meows").json()["items"][0]["id"]
+    resp = seeded_client.post(f"/api/meows/{meow_id}/feedback", json={"vote": "up"})
+    assert resp.status_code == 204
+    data = seeded_client.get("/api/meows").json()["items"][0]
+    assert data["upvote_count"] == 1
+    assert data["downvote_count"] == 0
+
+
+@pytest.mark.integration
+def test_feedback_downvote(seeded_client):
+    meow_id = seeded_client.get("/api/meows").json()["items"][0]["id"]
+    resp = seeded_client.post(f"/api/meows/{meow_id}/feedback", json={"vote": "down"})
+    assert resp.status_code == 204
+    data = seeded_client.get("/api/meows").json()["items"][0]
+    assert data["downvote_count"] == 1
+    assert data["upvote_count"] == 0
+
+
+@pytest.mark.integration
+def test_feedback_invalid_vote(seeded_client):
+    meow_id = seeded_client.get("/api/meows").json()["items"][0]["id"]
+    resp = seeded_client.post(f"/api/meows/{meow_id}/feedback", json={"vote": "sideways"})
+    assert resp.status_code == 422
+
+
+@pytest.mark.integration
+def test_feedback_not_found(client):
+    resp = client.post("/api/meows/nonexistent-id/feedback", json={"vote": "up"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.integration
 def test_ingest_job_not_found(client):
     resp = client.get("/api/ingest/nonexistent-job-id")
     assert resp.status_code == 404

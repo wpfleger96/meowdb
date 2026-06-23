@@ -69,6 +69,7 @@ _SORT_MAP = {
     "duration_asc": "duration_ms ASC, rowid ASC",
     "duration_desc": "duration_ms DESC, rowid DESC",
     "most_unique": "uniqueness_score DESC, rowid DESC",
+    "most_downvoted": "downvote_count DESC, rowid DESC",
 }
 
 
@@ -106,6 +107,14 @@ class MeowDB:
             self._conn.execute("ALTER TABLE cat_photos ADD COLUMN updated_at TEXT")
         except sqlite3.OperationalError:
             pass  # column already exists
+        for col, typedef in [
+            ("upvote_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("downvote_count", "INTEGER NOT NULL DEFAULT 0"),
+        ]:
+            try:
+                self._conn.execute(f"ALTER TABLE meows ADD COLUMN {col} {typedef}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
         self._conn.commit()
 
     def close(self) -> None:
@@ -242,6 +251,16 @@ class MeowDB:
                 (meow_id,),
             )
             self._conn.commit()
+
+    def record_feedback(self, meow_id: str, is_upvote: bool) -> bool:
+        col = "upvote_count" if is_upvote else "downvote_count"
+        with self._lock:
+            cursor = self._conn.execute(
+                f"UPDATE meows SET {col} = {col} + 1 WHERE id = ?",
+                (meow_id,),
+            )
+            self._conn.commit()
+        return cursor.rowcount > 0
 
     def get_count(self, label_filter: str | None = None) -> int:
         with self._lock:
