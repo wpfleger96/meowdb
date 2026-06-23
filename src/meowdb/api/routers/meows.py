@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from meowdb.api.auth import require_auth
-from meowdb.api.models import MeowListResponse, MeowResponse, UpdateMeowRequest
+from meowdb.api.models import FeedbackRequest, MeowListResponse, MeowResponse, UpdateMeowRequest
 from meowdb.api.streaming import safe_path
 from meowdb.config import MP3_DIR, WAV_DIR
 from meowdb.similarity import MeowSimilarity
@@ -28,6 +28,8 @@ def _meow_to_response(meow: dict) -> MeowResponse:  # type: ignore[type-arg]
         duration_ms=meow["duration_ms"],
         labels=meow.get("labels") or [],
         play_count=meow.get("play_count") or 0,
+        upvote_count=meow.get("upvote_count") or 0,
+        downvote_count=meow.get("downvote_count") or 0,
         created_at=meow.get("created_at") or "",
         wav_url=wav_url,
         mp3_url=mp3_url,
@@ -126,8 +128,19 @@ async def delete_meow(meow_id: str, request: Request, _: None = Depends(require_
 @router.post("/meows/{meow_id}/play", status_code=204)
 async def play_meow(meow_id: str, request: Request) -> Response:
     db = request.app.state.db
-    meow = db.get_by_id(meow_id)
-    if meow is None:
+    if not db.increment_play_count(meow_id):
         raise HTTPException(status_code=404, detail="Meow not found")
-    db.increment_play_count(meow_id)
+    return Response(status_code=204)
+
+
+@router.post("/meows/{meow_id}/feedback", status_code=204)
+async def feedback_meow(meow_id: str, body: FeedbackRequest, request: Request) -> Response:
+    db = request.app.state.db
+    is_upvote = body.vote == "up"
+    if body.previous and body.previous != body.vote:
+        ok = db.switch_feedback(meow_id, is_upvote=is_upvote)
+    else:
+        ok = db.record_feedback(meow_id, is_upvote=is_upvote)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Meow not found")
     return Response(status_code=204)

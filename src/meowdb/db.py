@@ -69,6 +69,8 @@ _SORT_MAP = {
     "duration_asc": "duration_ms ASC, rowid ASC",
     "duration_desc": "duration_ms DESC, rowid DESC",
     "most_unique": "uniqueness_score DESC, rowid DESC",
+    "most_upvoted": "upvote_count DESC, rowid DESC",
+    "most_downvoted": "downvote_count DESC, rowid DESC",
 }
 
 
@@ -97,6 +99,8 @@ class MeowDB:
             ("title", "TEXT"),
             ("meow_fingerprint", "TEXT"),
             ("uniqueness_score", "REAL"),
+            ("upvote_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("downvote_count", "INTEGER NOT NULL DEFAULT 0"),
         ]:
             try:
                 self._conn.execute(f"ALTER TABLE meows ADD COLUMN {col} {typedef}")
@@ -235,13 +239,35 @@ class MeowDB:
             self._conn.commit()
         return cursor.rowcount > 0
 
-    def increment_play_count(self, meow_id: str) -> None:
+    def increment_play_count(self, meow_id: str) -> bool:
         with self._lock:
-            self._conn.execute(
+            cursor = self._conn.execute(
                 "UPDATE meows SET play_count = play_count + 1, last_played = datetime('now') WHERE id = ?",
                 (meow_id,),
             )
             self._conn.commit()
+        return cursor.rowcount > 0
+
+    def record_feedback(self, meow_id: str, is_upvote: bool) -> bool:
+        col = "upvote_count" if is_upvote else "downvote_count"
+        with self._lock:
+            cursor = self._conn.execute(
+                f"UPDATE meows SET {col} = {col} + 1 WHERE id = ?",
+                (meow_id,),
+            )
+            self._conn.commit()
+        return cursor.rowcount > 0
+
+    def switch_feedback(self, meow_id: str, is_upvote: bool) -> bool:
+        inc = "upvote_count" if is_upvote else "downvote_count"
+        dec = "downvote_count" if is_upvote else "upvote_count"
+        with self._lock:
+            cursor = self._conn.execute(
+                f"UPDATE meows SET {inc} = {inc} + 1, {dec} = MAX({dec} - 1, 0) WHERE id = ?",
+                (meow_id,),
+            )
+            self._conn.commit()
+        return cursor.rowcount > 0
 
     def get_count(self, label_filter: str | None = None) -> int:
         with self._lock:
@@ -470,6 +496,20 @@ class MeowDB:
                 ).fetchall()
             ]
 
+            most_upvoted = [
+                self._row_to_dict(r)
+                for r in self._conn.execute(
+                    "SELECT * FROM meows WHERE upvote_count > 0 ORDER BY upvote_count DESC LIMIT 5"
+                ).fetchall()
+            ]
+
+            most_downvoted_stats = [
+                self._row_to_dict(r)
+                for r in self._conn.execute(
+                    "SELECT * FROM meows WHERE downvote_count > 0 ORDER BY downvote_count DESC LIMIT 5"
+                ).fetchall()
+            ]
+
             # RLock allows reentry so _count_labels() can acquire the same lock
             label_counts = self._count_labels()
 
@@ -480,6 +520,8 @@ class MeowDB:
             "first_meow_at": agg["first_meow_at"],
             "most_played": most_played,
             "recent": recent,
+            "most_upvoted": most_upvoted,
+            "most_downvoted": most_downvoted_stats,
             "label_counts": label_counts,
         }
 

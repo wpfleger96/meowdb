@@ -100,6 +100,34 @@
               aria-hidden="true"
             ></canvas>
 
+            <!-- Feedback buttons (thumbs up/down for the meow just played) -->
+            <div class="play-feedback" x-show="currentMeow" x-cloak>
+              <button
+                class="feedback-btn feedback-up"
+                :class="{ active: feedbackGiven === 'up', voted: feedbackGiven }"
+                :disabled="feedbackGiven === 'up'"
+                @click="submitFeedback('up')"
+                aria-label="Thumbs up"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+                  <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                </svg>
+              </button>
+              <button
+                class="feedback-btn feedback-down"
+                :class="{ active: feedbackGiven === 'down', voted: feedbackGiven }"
+                :disabled="feedbackGiven === 'down'"
+                @click="submitFeedback('down')"
+                aria-label="Thumbs down"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
+                  <path d="M17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>
+                </svg>
+              </button>
+            </div>
+
             <!-- Uniqueness badge (shown when current meow has a score) -->
             <div x-show="currentMeow?.uniqueness_score != null" style="min-height:1.5rem;">
               <span
@@ -126,6 +154,9 @@
             <p class="cat-bio" x-show="meowCount > 0">
               Squishy is a very vocal cat. This is her personal meow archive.
             </p>
+
+            <!-- App version -->
+            <p class="app-version" x-show="appVersion" x-text="'v' + appVersion" x-cloak></p>
           </div>
         </template>
 
@@ -171,6 +202,8 @@
               <option value="duration_asc">Shortest</option>
               <option value="duration_desc">Longest</option>
               <option value="most_unique">Most unique</option>
+              <option value="most_upvoted">Most upvoted</option>
+              <option value="most_downvoted">Most downvoted</option>
             </select>
             <!-- mobile auth control — keep all copies identical -->
             <div class="nav-auth-mobile" x-show="authRequired" x-cloak>
@@ -248,6 +281,8 @@
                   ></span>
                   <span x-text="formatDate(meow.created_at)"></span>
                   <span x-show="meow.play_count > 0" x-text="meow.play_count + ' plays'"></span>
+                  <span class="badge badge-green" x-show="meow.upvote_count > 0" x-text="meow.upvote_count + (meow.upvote_count === 1 ? ' upvote' : ' upvotes')"></span>
+                  <span class="badge badge-red" x-show="meow.downvote_count > 0" x-text="meow.downvote_count + (meow.downvote_count === 1 ? ' downvote' : ' downvotes')"></span>
                   <template x-for="label in (meow.labels || []).slice(0, 2)" :key="label">
                     <span class="badge badge-accent" x-text="label"></span>
                   </template>
@@ -347,6 +382,13 @@
               <div class="detail-meta-item">
                 <span class="detail-meta-label">Plays</span>
                 <span class="detail-meta-value" x-text="detailMeow?.play_count ?? 0"></span>
+              </div>
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">Votes</span>
+                <span class="detail-meta-value" style="display:flex;gap:var(--sp-3);">
+                  <span class="text-green" x-text="(detailMeow?.upvote_count ?? 0) + ' ↑'"></span>
+                  <span class="text-red" x-text="(detailMeow?.downvote_count ?? 0) + ' ↓'"></span>
+                </span>
               </div>
               <div class="detail-meta-item">
                 <span class="detail-meta-label">Uniqueness</span>
@@ -905,6 +947,36 @@
                     <div class="leaderboard-duration" x-text="formatDate(meow.created_at)"></div>
                   </div>
                   <div class="leaderboard-duration" x-text="formatDuration(meow.duration_ms)"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Most upvoted leaderboard -->
+            <div class="stats-section" x-show="stats.most_upvoted && stats.most_upvoted.length > 0">
+              <div class="stats-section-header">Most upvoted</div>
+              <template x-for="(meow, index) in stats.most_upvoted" :key="meow.id">
+                <div class="leaderboard-item" @click="playLeaderboardMeow(meow)">
+                  <div class="leaderboard-rank" :class="{ top: index === 0 }" x-text="index + 1"></div>
+                  <div class="leaderboard-main">
+                    <div class="leaderboard-id" x-text="formatId(meow.id)"></div>
+                    <div class="leaderboard-duration" x-text="formatDuration(meow.duration_ms)"></div>
+                  </div>
+                  <div class="leaderboard-plays text-green" x-text="meow.upvote_count + ' ↑'"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Most downvoted leaderboard -->
+            <div class="stats-section" x-show="stats.most_downvoted && stats.most_downvoted.length > 0">
+              <div class="stats-section-header">Most downvoted</div>
+              <template x-for="(meow, index) in stats.most_downvoted" :key="meow.id">
+                <div class="leaderboard-item" @click="playLeaderboardMeow(meow)">
+                  <div class="leaderboard-rank" :class="{ top: index === 0 }" x-text="index + 1"></div>
+                  <div class="leaderboard-main">
+                    <div class="leaderboard-id" x-text="formatId(meow.id)"></div>
+                    <div class="leaderboard-duration" x-text="formatDuration(meow.duration_ms)"></div>
+                  </div>
+                  <div class="leaderboard-plays text-red" x-text="meow.downvote_count + ' ↓'"></div>
                 </div>
               </template>
             </div>

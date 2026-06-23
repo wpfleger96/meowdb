@@ -106,6 +106,31 @@ async function recordPlay(id) {
   return apiFetch(`/meows/${id}/play`, { method: 'POST' });
 }
 
+/**
+ * Record or switch a feedback vote.
+ * @param {string} id
+ * @param {{ vote: 'up'|'down', previous?: 'up'|'down' }} body
+ * @returns {Promise<null>}
+ */
+async function recordFeedback(id, body) {
+  return apiFetch(`/meows/${id}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/* ============================================================
+   Version
+   ============================================================ */
+
+/**
+ * @returns {Promise<{ version: string }>}
+ */
+async function getVersion() {
+  return apiFetch('/version');
+}
+
 /* ============================================================
    Ingest / Upload
    ============================================================ */

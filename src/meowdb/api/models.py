@@ -11,6 +11,8 @@ class MeowResponse(BaseModel):
     duration_ms: int
     labels: list[str]
     play_count: int
+    upvote_count: int = 0
+    downvote_count: int = 0
     created_at: str
     wav_url: str | None = None
     mp3_url: str | None = None
@@ -64,11 +66,18 @@ class CommitResponse(BaseModel):
     rejected_count: int
 
 
+class FeedbackRequest(BaseModel):
+    vote: Literal["up", "down"]
+    previous: Literal["up", "down"] | None = None
+
+
 class MeowSummary(BaseModel):
     id: str
     duration_ms: int
     labels: list[str]
     play_count: int
+    upvote_count: int = 0
+    downvote_count: int = 0
     created_at: str
 
 
@@ -78,6 +87,8 @@ class StatsResponse(BaseModel):
     avg_duration_ms: float
     most_played: list[MeowSummary]
     recent: list[MeowSummary]
+    most_upvoted: list[MeowSummary] = []
+    most_downvoted: list[MeowSummary] = []
     label_counts: dict[str, int]
     first_meow_at: str | None = None
 

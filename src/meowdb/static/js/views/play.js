@@ -9,6 +9,8 @@ function playView() {
     isLoading: false,
     currentMeow: null,
     currentPhoto: null,
+    feedbackGiven: null,
+    appVersion: null,
     _cancelWaveform: null,
     _gen: 0,
 
@@ -17,6 +19,7 @@ function playView() {
       await this._refreshCount();
       this.isLoading = false;
       getRandomPhoto().then(photo => { this.currentPhoto = photo; }).catch(() => {});
+      getVersion().then(data => { this.appVersion = data.version; }).catch(() => {});
     },
 
     async _refreshCount() {
@@ -55,6 +58,7 @@ function playView() {
       if (gen !== this._gen) return; // a newer tap won; abandon this one
 
       this.currentMeow = meow;
+      this.feedbackGiven = null;
       // New photo on every advance; guard so only the latest tap's photo sticks.
       getRandomPhoto(this.currentPhoto?.id)
         .then(photo => { if (gen === this._gen) this.currentPhoto = photo; })
@@ -80,6 +84,8 @@ function playView() {
 
       audioPlayer.onError = (err) => {
         this.isPlaying = false;
+        this.currentMeow = null;
+        this.feedbackGiven = null;
         this._stopWaveform();
         showToast('Playback error: ' + (err.message || 'unknown'), 'error');
       };
@@ -130,6 +136,21 @@ function playView() {
       if (score >= 75) return 'badge-green';
       if (score >= 50) return 'badge-yellow';
       return 'badge-red';
+    },
+
+    submitFeedback(vote) {
+      if (!this.currentMeow || this.feedbackGiven === vote) return;
+      const previous = this.feedbackGiven;
+      this.feedbackGiven = vote;
+      const body = previous ? { vote, previous } : { vote };
+      recordFeedback(this.currentMeow.id, body)
+        .then(() => {
+          showToast(vote === 'up' ? 'Upvoted!' : 'Downvoted', vote === 'up' ? 'success' : 'info');
+        })
+        .catch(() => {
+          this.feedbackGiven = previous;
+          showToast('Vote failed', 'error');
+        });
     },
 
     /** Navigate to the upload view */

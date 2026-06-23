@@ -287,6 +287,109 @@ def test_audio_stream_with_data(seeded_client):
 
 
 @pytest.mark.integration
+def test_feedback_upvote(seeded_client):
+    meow_id = seeded_client.get("/api/meows").json()["items"][0]["id"]
+    resp = seeded_client.post(f"/api/meows/{meow_id}/feedback", json={"vote": "up"})
+    assert resp.status_code == 204
+    data = seeded_client.get("/api/meows").json()["items"][0]
+    assert data["upvote_count"] == 1
+    assert data["downvote_count"] == 0
+
+
+@pytest.mark.integration
+def test_feedback_downvote(seeded_client):
+    meow_id = seeded_client.get("/api/meows").json()["items"][0]["id"]
+    resp = seeded_client.post(f"/api/meows/{meow_id}/feedback", json={"vote": "down"})
+    assert resp.status_code == 204
+    data = seeded_client.get("/api/meows").json()["items"][0]
+    assert data["downvote_count"] == 1
+    assert data["upvote_count"] == 0
+
+
+@pytest.mark.integration
+def test_feedback_invalid_vote(seeded_client):
+    meow_id = seeded_client.get("/api/meows").json()["items"][0]["id"]
+    resp = seeded_client.post(f"/api/meows/{meow_id}/feedback", json={"vote": "sideways"})
+    assert resp.status_code == 422
+
+
+@pytest.mark.integration
+def test_feedback_not_found(client):
+    resp = client.post("/api/meows/nonexistent-id/feedback", json={"vote": "up"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.integration
+def test_feedback_switch_vote(seeded_client):
+    meow_id = seeded_client.get("/api/meows").json()["items"][0]["id"]
+    seeded_client.post(f"/api/meows/{meow_id}/feedback", json={"vote": "up"})
+    resp = seeded_client.post(
+        f"/api/meows/{meow_id}/feedback", json={"vote": "down", "previous": "up"}
+    )
+    assert resp.status_code == 204
+    data = seeded_client.get("/api/meows").json()["items"][0]
+    assert data["upvote_count"] == 0
+    assert data["downvote_count"] == 1
+
+
+@pytest.mark.integration
+def test_list_meows_sort_most_downvoted(seeded_client, tmp_dirs):
+    # Add a second meow with more downvotes
+    wav_file = next(tmp_dirs["wav"].glob("*.wav"))
+    mp3_file = next(tmp_dirs["mp3"].glob("*.mp3"))
+    meow_id_1 = seeded_client.get("/api/meows").json()["items"][0]["id"]
+    meow_id_2 = seeded_client.app.state.db.add(
+        {
+            "timestamp": "2026-01-02T00:00:00",
+            "duration_ms": 500,
+            "labels": [],
+            "wav_path": str(wav_file),
+            "mp3_path": str(mp3_file),
+            "waveform_data": [],
+            "peak_dbfs": -10.0,
+            "cat_energy_ratio": 2.5,
+        }
+    )
+    seeded_client.post(f"/api/meows/{meow_id_1}/feedback", json={"vote": "down"})
+    seeded_client.post(f"/api/meows/{meow_id_2}/feedback", json={"vote": "down"})
+    seeded_client.post(f"/api/meows/{meow_id_2}/feedback", json={"vote": "down"})
+
+    resp = seeded_client.get("/api/meows?sort=most_downvoted")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert items[0]["id"] == meow_id_2
+    assert items[0]["downvote_count"] == 2
+
+
+@pytest.mark.integration
+def test_list_meows_sort_most_upvoted(seeded_client, tmp_dirs):
+    wav_file = next(tmp_dirs["wav"].glob("*.wav"))
+    mp3_file = next(tmp_dirs["mp3"].glob("*.mp3"))
+    meow_id_1 = seeded_client.get("/api/meows").json()["items"][0]["id"]
+    meow_id_2 = seeded_client.app.state.db.add(
+        {
+            "timestamp": "2026-01-02T00:00:00",
+            "duration_ms": 500,
+            "labels": [],
+            "wav_path": str(wav_file),
+            "mp3_path": str(mp3_file),
+            "waveform_data": [],
+            "peak_dbfs": -10.0,
+            "cat_energy_ratio": 2.5,
+        }
+    )
+    seeded_client.post(f"/api/meows/{meow_id_1}/feedback", json={"vote": "up"})
+    seeded_client.post(f"/api/meows/{meow_id_1}/feedback", json={"vote": "up"})
+    seeded_client.post(f"/api/meows/{meow_id_2}/feedback", json={"vote": "up"})
+
+    resp = seeded_client.get("/api/meows?sort=most_upvoted")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert items[0]["id"] == meow_id_1
+    assert items[0]["upvote_count"] == 2
+
+
+@pytest.mark.integration
 def test_ingest_job_not_found(client):
     resp = client.get("/api/ingest/nonexistent-job-id")
     assert resp.status_code == 404
