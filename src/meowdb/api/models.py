@@ -86,6 +86,8 @@ class StatsResponse(BaseModel):
     avg_duration_ms: float
     most_played: list[MeowSummary]
     recent: list[MeowSummary]
+    most_upvoted: list[MeowSummary] = []
+    most_downvoted: list[MeowSummary] = []
     label_counts: dict[str, int]
     first_meow_at: str | None = None
 

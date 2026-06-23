@@ -240,11 +240,16 @@ def test_delete_missing(tmp_db: MeowDB) -> None:
 @pytest.mark.unit
 def test_increment_play_count(tmp_db: MeowDB) -> None:
     meow_id = tmp_db.add(_meow())
-    tmp_db.increment_play_count(meow_id)
-    tmp_db.increment_play_count(meow_id)
+    assert tmp_db.increment_play_count(meow_id) is True
+    assert tmp_db.increment_play_count(meow_id) is True
     result = tmp_db.get_by_id(meow_id)
     assert result is not None
     assert result["play_count"] == 2
+
+
+@pytest.mark.unit
+def test_increment_play_count_missing_id(tmp_db: MeowDB) -> None:
+    assert tmp_db.increment_play_count("nonexistent") is False
 
 
 @pytest.mark.unit
@@ -282,6 +287,30 @@ def test_get_all_sort_most_downvoted(tmp_db: MeowDB) -> None:
     tmp_db.record_feedback(id2, is_upvote=False)
     results = tmp_db.get_all(sort="most_downvoted")
     assert results[0]["id"] == id2
+
+
+@pytest.mark.unit
+def test_get_all_sort_most_upvoted(tmp_db: MeowDB) -> None:
+    id1 = tmp_db.add(_meow())
+    id2 = tmp_db.add(_meow())
+    tmp_db.record_feedback(id1, is_upvote=True)
+    tmp_db.record_feedback(id2, is_upvote=True)
+    tmp_db.record_feedback(id1, is_upvote=True)
+    results = tmp_db.get_all(sort="most_upvoted")
+    assert results[0]["id"] == id1
+
+
+@pytest.mark.unit
+def test_get_stats_includes_vote_leaderboards(tmp_db: MeowDB) -> None:
+    id1 = tmp_db.add(_meow())
+    id2 = tmp_db.add(_meow())
+    tmp_db.record_feedback(id1, is_upvote=True)
+    tmp_db.record_feedback(id2, is_upvote=False)
+    stats = tmp_db.get_stats()
+    assert len(stats["most_upvoted"]) == 1
+    assert stats["most_upvoted"][0]["id"] == id1
+    assert len(stats["most_downvoted"]) == 1
+    assert stats["most_downvoted"][0]["id"] == id2
 
 
 # =============================================================================

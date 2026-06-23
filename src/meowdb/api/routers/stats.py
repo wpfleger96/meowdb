@@ -17,6 +17,8 @@ async def get_stats(request: Request) -> StatsResponse:
         avg_duration_ms=data["avg_duration_ms"],
         most_played=[MeowSummary(**m) for m in data["most_played"]],
         recent=[MeowSummary(**m) for m in data["recent"]],
+        most_upvoted=[MeowSummary(**m) for m in data.get("most_upvoted", [])],
+        most_downvoted=[MeowSummary(**m) for m in data.get("most_downvoted", [])],
         label_counts=data["label_counts"],
         first_meow_at=data.get("first_meow_at"),
     )

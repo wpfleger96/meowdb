@@ -82,6 +82,8 @@ function playView() {
 
       audioPlayer.onError = (err) => {
         this.isPlaying = false;
+        this.currentMeow = null;
+        this.feedbackGiven = null;
         this._stopWaveform();
         showToast('Playback error: ' + (err.message || 'unknown'), 'error');
       };
@@ -137,8 +139,14 @@ function playView() {
     submitFeedback(vote) {
       if (!this.currentMeow || this.feedbackGiven) return;
       this.feedbackGiven = vote;
-      recordFeedback(this.currentMeow.id, vote).catch(() => {});
-      showToast(vote === 'up' ? 'Upvoted!' : 'Downvoted', vote === 'up' ? 'success' : 'info');
+      recordFeedback(this.currentMeow.id, vote)
+        .then(() => {
+          showToast(vote === 'up' ? 'Upvoted!' : 'Downvoted', vote === 'up' ? 'success' : 'info');
+        })
+        .catch(() => {
+          this.feedbackGiven = null;
+          showToast('Vote failed', 'error');
+        });
     },
 
     /** Navigate to the upload view */

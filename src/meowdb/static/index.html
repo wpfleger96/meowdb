@@ -199,6 +199,7 @@
               <option value="duration_asc">Shortest</option>
               <option value="duration_desc">Longest</option>
               <option value="most_unique">Most unique</option>
+              <option value="most_upvoted">Most upvoted</option>
               <option value="most_downvoted">Most downvoted</option>
             </select>
             <!-- mobile auth control — keep all copies identical -->
@@ -277,6 +278,7 @@
                   ></span>
                   <span x-text="formatDate(meow.created_at)"></span>
                   <span x-show="meow.play_count > 0" x-text="meow.play_count + ' plays'"></span>
+                  <span class="badge badge-green" x-show="meow.upvote_count > 0" x-text="meow.upvote_count + (meow.upvote_count === 1 ? ' upvote' : ' upvotes')"></span>
                   <span class="badge badge-red" x-show="meow.downvote_count > 0" x-text="meow.downvote_count + (meow.downvote_count === 1 ? ' downvote' : ' downvotes')"></span>
                   <template x-for="label in (meow.labels || []).slice(0, 2)" :key="label">
                     <span class="badge badge-accent" x-text="label"></span>
@@ -942,6 +944,36 @@
                     <div class="leaderboard-duration" x-text="formatDate(meow.created_at)"></div>
                   </div>
                   <div class="leaderboard-duration" x-text="formatDuration(meow.duration_ms)"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Most upvoted leaderboard -->
+            <div class="stats-section" x-show="stats.most_upvoted && stats.most_upvoted.length > 0">
+              <div class="stats-section-header">Most upvoted</div>
+              <template x-for="(meow, index) in stats.most_upvoted" :key="meow.id">
+                <div class="leaderboard-item" @click="playLeaderboardMeow(meow)">
+                  <div class="leaderboard-rank" :class="{ top: index === 0 }" x-text="index + 1"></div>
+                  <div class="leaderboard-main">
+                    <div class="leaderboard-id" x-text="formatId(meow.id)"></div>
+                    <div class="leaderboard-duration" x-text="formatDuration(meow.duration_ms)"></div>
+                  </div>
+                  <div class="leaderboard-plays text-green" x-text="meow.upvote_count + ' ↑'"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Most downvoted leaderboard -->
+            <div class="stats-section" x-show="stats.most_downvoted && stats.most_downvoted.length > 0">
+              <div class="stats-section-header">Most downvoted</div>
+              <template x-for="(meow, index) in stats.most_downvoted" :key="meow.id">
+                <div class="leaderboard-item" @click="playLeaderboardMeow(meow)">
+                  <div class="leaderboard-rank" :class="{ top: index === 0 }" x-text="index + 1"></div>
+                  <div class="leaderboard-main">
+                    <div class="leaderboard-id" x-text="formatId(meow.id)"></div>
+                    <div class="leaderboard-duration" x-text="formatDuration(meow.duration_ms)"></div>
+                  </div>
+                  <div class="leaderboard-plays text-red" x-text="meow.downvote_count + ' ↓'"></div>
                 </div>
               </template>
             </div>

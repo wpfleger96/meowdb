@@ -128,10 +128,8 @@ async def delete_meow(meow_id: str, request: Request, _: None = Depends(require_
 @router.post("/meows/{meow_id}/play", status_code=204)
 async def play_meow(meow_id: str, request: Request) -> Response:
     db = request.app.state.db
-    meow = db.get_by_id(meow_id)
-    if meow is None:
+    if not db.increment_play_count(meow_id):
         raise HTTPException(status_code=404, detail="Meow not found")
-    db.increment_play_count(meow_id)
     return Response(status_code=204)
 
 
