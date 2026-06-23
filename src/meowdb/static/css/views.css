@@ -869,6 +869,13 @@
   line-height: 1.6;
 }
 
+.app-version {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  opacity: 0.5;
+  font-family: var(--font-mono);
+}
+
 /* ── Photo upload ── */
 
 .photo-upload-section {
