@@ -90,6 +90,8 @@ class _NoCacheStaticMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/static/"):
             if _HASHED_ASSET_RE.search(request.url.path):
                 response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            elif request.url.path == "/static/sw.js":
+                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             else:
                 response.headers["Cache-Control"] = "no-cache"
         return response
