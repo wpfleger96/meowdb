@@ -63,6 +63,10 @@
     line-height: 1;
   }
 
+  .nav-brand .app-version {
+    margin-left: auto;
+  }
+
   .nav-tab {
     flex: none;
     flex-direction: row;
