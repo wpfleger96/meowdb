@@ -54,6 +54,13 @@ def main() -> None:
         html = html.replace(original, hashed)
     INDEX_HTML.write_text(html)
 
+    sw = STATIC_DIR / "sw.js"
+    sw_text = sw.read_text()
+    if "__BUILD_HASH__" in sw_text:
+        build_hash = hashlib.sha256("".join(sorted(mapping.values())).encode()).hexdigest()[:8]
+        sw.write_text(sw_text.replace("__BUILD_HASH__", build_hash))
+        print(f"build.py: stamped sw.js with build hash {build_hash}")
+
     print(f"build.py: hashed {len(mapping)} asset(s), rewrote index.html")
 
 
