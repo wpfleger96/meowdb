@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/wpfleger96/MeowDB/compare/v0.3.0...v0.4.0) (2026-06-24)
+
+
+### Features
+
+* re-enable active service worker for PWA update propagation ([#51](https://github.com/wpfleger96/MeowDB/issues/51)) ([c23d908](https://github.com/wpfleger96/MeowDB/commit/c23d908c4448d0ee4c7072f00b40ba2c4b5d4c60))
+
+
+### Bug Fixes
+
+* move version string from play view to sidebar brand ([#49](https://github.com/wpfleger96/MeowDB/issues/49)) ([ae47138](https://github.com/wpfleger96/MeowDB/commit/ae4713837b5e673098cb58b4e5e3f2ca9712dca3))
+
 ## [0.3.0](https://github.com/wpfleger96/MeowDB/compare/v0.2.0...v0.3.0) (2026-06-23)
 
 
