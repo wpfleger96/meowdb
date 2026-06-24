@@ -69,6 +69,7 @@ function app() {
     loginPassword: '',
     loginError: '',
     loginLoading: false,
+    appVersion: null,
 
     get canWrite() {
       return !this.authRequired || this.authenticated;
@@ -106,6 +107,8 @@ function app() {
       } catch (_) {
         // auth status check is best-effort; if it fails, assume unauthenticated
       }
+
+      getVersion().then(data => { this.appVersion = data.version; }).catch(() => {});
 
       if (this.authRequired && !this.authenticated && this.currentView === 'ingest') {
         navigateTo('/');

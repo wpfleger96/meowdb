@@ -10,7 +10,6 @@ function playView() {
     currentMeow: null,
     currentPhoto: null,
     feedbackGiven: null,
-    appVersion: null,
     _cancelWaveform: null,
     _gen: 0,
 
@@ -19,7 +18,6 @@ function playView() {
       await this._refreshCount();
       this.isLoading = false;
       getRandomPhoto().then(photo => { this.currentPhoto = photo; }).catch(() => {});
-      getVersion().then(data => { this.appVersion = data.version; }).catch(() => {});
     },
 
     async _refreshCount() {
