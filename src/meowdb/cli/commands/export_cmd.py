@@ -19,15 +19,28 @@ _PHOTOS_PREFIX = "meowdb-export/photos/"
 _FORMAT_VERSION = 1
 
 _PORTABLE_FIELDS = {
-    "id", "timestamp", "duration_ms", "labels", "play_count", "last_played",
-    "created_at", "waveform_data", "peak_dbfs", "cat_energy_ratio",
-    "recorded_at", "title", "upvote_count", "downvote_count",
+    "id",
+    "timestamp",
+    "duration_ms",
+    "labels",
+    "play_count",
+    "last_played",
+    "created_at",
+    "waveform_data",
+    "peak_dbfs",
+    "cat_energy_ratio",
+    "recorded_at",
+    "title",
+    "upvote_count",
+    "downvote_count",
 }
 
 
 @click.command(name="export")
 @click.argument("output", type=click.Path(dir_okay=False), default=None, required=False)
-@click.option("--include-photos", is_flag=True, default=False, help="Include cat photos in the archive.")
+@click.option(
+    "--include-photos", is_flag=True, default=False, help="Include cat photos in the archive."
+)
 @db_path_option
 def export_meows(output: str | None, include_photos: bool, db_path: str | None) -> None:
     """Export the meow library to a portable zip archive."""
@@ -52,7 +65,9 @@ def export_meows(output: str | None, include_photos: bool, db_path: str | None) 
                 print_warning(f"Missing WAV for {meow['id'][:8]}, skipping")
                 skipped_meows += 1
                 continue
-            zf.write(wav_path, _AUDIO_PREFIX + meow["id"] + ".wav", compress_type=zipfile.ZIP_STORED)
+            zf.write(
+                wav_path, _AUDIO_PREFIX + meow["id"] + ".wav", compress_type=zipfile.ZIP_STORED
+            )
             manifest_meows.append({k: v for k, v in meow.items() if k in _PORTABLE_FIELDS})
             exported_meows += 1
 
@@ -62,14 +77,18 @@ def export_meows(output: str | None, include_photos: bool, db_path: str | None) 
                 print_warning(f"Missing photo file for {photo['id'][:8]}, skipping")
                 skipped_photos += 1
                 continue
-            zf.write(photo_path, _PHOTOS_PREFIX + photo["filename"], compress_type=zipfile.ZIP_STORED)
-            manifest_photos.append({
-                "id": photo["id"],
-                "filename": photo["filename"],
-                "created_at": photo.get("created_at"),
-                "is_default": bool(photo.get("is_default")),
-                "updated_at": photo.get("updated_at"),
-            })
+            zf.write(
+                photo_path, _PHOTOS_PREFIX + photo["filename"], compress_type=zipfile.ZIP_STORED
+            )
+            manifest_photos.append(
+                {
+                    "id": photo["id"],
+                    "filename": photo["filename"],
+                    "created_at": photo.get("created_at"),
+                    "is_default": bool(photo.get("is_default")),
+                    "updated_at": photo.get("updated_at"),
+                }
+            )
             exported_photos += 1
 
         manifest: dict[str, object] = {

@@ -125,9 +125,7 @@ def test_export_excludes_nonportable_fields(
 
 
 @pytest.mark.integration
-def test_export_skips_missing_wav(
-    runner: CliRunner, db_path: Path, tmp_path: Path
-) -> None:
+def test_export_skips_missing_wav(runner: CliRunner, db_path: Path, tmp_path: Path) -> None:
     db = MeowDB(db_path)
     _insert_meow(db, Path("/nonexistent/path.wav"), Path("/nonexistent/path.mp3"))
     db.close()
@@ -220,11 +218,24 @@ def test_import_skip_conflict(
     manifest = {
         "format_version": 1,
         "meow_count": 1,
-        "meows": [{"id": meow_id, "timestamp": "", "duration_ms": 500,
-                    "labels": [], "title": "Should be skipped", "play_count": 0,
-                    "last_played": None, "created_at": "", "waveform_data": [],
-                    "peak_dbfs": None, "cat_energy_ratio": None, "recorded_at": None,
-                    "upvote_count": 0, "downvote_count": 0}],
+        "meows": [
+            {
+                "id": meow_id,
+                "timestamp": "",
+                "duration_ms": 500,
+                "labels": [],
+                "title": "Should be skipped",
+                "play_count": 0,
+                "last_played": None,
+                "created_at": "",
+                "waveform_data": [],
+                "peak_dbfs": None,
+                "cat_energy_ratio": None,
+                "recorded_at": None,
+                "upvote_count": 0,
+                "downvote_count": 0,
+            }
+        ],
     }
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr(_MANIFEST_PATH, json.dumps(manifest))
@@ -261,11 +272,24 @@ def test_import_new_ids(
     manifest = {
         "format_version": 1,
         "meow_count": 1,
-        "meows": [{"id": original_id, "timestamp": "", "duration_ms": 1000,
-                    "labels": [], "title": "New ID test", "play_count": 0,
-                    "last_played": None, "created_at": "", "waveform_data": [],
-                    "peak_dbfs": None, "cat_energy_ratio": None, "recorded_at": None,
-                    "upvote_count": 0, "downvote_count": 0}],
+        "meows": [
+            {
+                "id": original_id,
+                "timestamp": "",
+                "duration_ms": 1000,
+                "labels": [],
+                "title": "New ID test",
+                "play_count": 0,
+                "last_played": None,
+                "created_at": "",
+                "waveform_data": [],
+                "peak_dbfs": None,
+                "cat_energy_ratio": None,
+                "recorded_at": None,
+                "upvote_count": 0,
+                "downvote_count": 0,
+            }
+        ],
     }
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr(_MANIFEST_PATH, json.dumps(manifest))
@@ -367,6 +391,7 @@ def test_round_trip(
 # Photo export / import tests
 # ---------------------------------------------------------------------------
 
+
 def _make_webp(path: Path) -> None:
     """Write a minimal valid WebP file."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -403,7 +428,9 @@ def test_export_includes_photos(
     db.close()
 
     out = tmp_path / "out.zip"
-    result = runner.invoke(main, ["export", str(out), "--include-photos", "--db-path", str(db_path)])
+    result = runner.invoke(
+        main, ["export", str(out), "--include-photos", "--db-path", str(db_path)]
+    )
     assert result.exit_code == 0, result.output
 
     with zipfile.ZipFile(out) as zf:
@@ -513,7 +540,15 @@ def test_import_photos_skip_conflict(
     runner.invoke(main, ["export", str(archive), "--include-photos", "--db-path", str(db_path)])
     result = runner.invoke(
         main,
-        ["import", str(archive), "--include-photos", "--on-conflict", "skip", "--db-path", str(db_path)],
+        [
+            "import",
+            str(archive),
+            "--include-photos",
+            "--on-conflict",
+            "skip",
+            "--db-path",
+            str(db_path),
+        ],
     )
     assert result.exit_code == 0
 

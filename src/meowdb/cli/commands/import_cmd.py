@@ -30,7 +30,9 @@ _SUPPORTED_FORMAT_VERSIONS = {1}
     show_default=True,
     help="How to handle meows/photos whose ID already exists in the library.",
 )
-@click.option("--include-photos", is_flag=True, default=False, help="Import cat photos from the archive.")
+@click.option(
+    "--include-photos", is_flag=True, default=False, help="Import cat photos from the archive."
+)
 @db_path_option
 def import_meows(archive: str, on_conflict: str, include_photos: bool, db_path: str | None) -> None:
     """Import meows from an export archive."""
@@ -52,9 +54,7 @@ def import_meows(archive: str, on_conflict: str, include_photos: bool, db_path: 
             sys.exit(1)
 
         if manifest.get("format_version") not in _SUPPORTED_FORMAT_VERSIONS:
-            print_error(
-                f"Unsupported archive format version: {manifest.get('format_version')!r}"
-            )
+            print_error(f"Unsupported archive format version: {manifest.get('format_version')!r}")
             ctx.db.close()
             sys.exit(1)
 
@@ -111,7 +111,9 @@ def import_meows(archive: str, on_conflict: str, include_photos: bool, db_path: 
         if include_photos:
             archive_photos = manifest.get("photos")
             if archive_photos is None:
-                print_warning("Archive does not contain photos (was not exported with --include-photos)")
+                print_warning(
+                    "Archive does not contain photos (was not exported with --include-photos)"
+                )
             else:
                 PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
                 for photo in archive_photos:
@@ -120,7 +122,9 @@ def import_meows(archive: str, on_conflict: str, include_photos: bool, db_path: 
                     arc_photo = f"meowdb-export/photos/{original_filename}"
 
                     if arc_photo not in zf.namelist():
-                        print_warning(f"Photo file missing in archive for {original_id[:8]}, skipping")
+                        print_warning(
+                            f"Photo file missing in archive for {original_id[:8]}, skipping"
+                        )
                         skipped_photos += 1
                         continue
 
