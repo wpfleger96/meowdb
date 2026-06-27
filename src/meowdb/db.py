@@ -670,7 +670,7 @@ class MeowDB:
             )
             self._conn.commit()
 
-    def update_uniqueness_scores_bulk(self, scores: dict[str, float]) -> None:
+    def update_uniqueness_scores_bulk(self, scores: dict[str, float | None]) -> None:
         with self._lock:
             self._conn.executemany(
                 "UPDATE meows SET uniqueness_score = ? WHERE id = ?",
