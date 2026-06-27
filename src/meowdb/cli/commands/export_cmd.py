@@ -10,7 +10,7 @@ import click
 
 from meowdb.cli.helpers import build_context
 from meowdb.cli.options import db_path_option
-from meowdb.config import PHOTOS_DIR
+from meowdb.config import DATA_DIR, PHOTOS_DIR
 from meowdb.display import print_success, print_warning
 
 _MANIFEST_PATH = "meowdb-export/manifest.json"
@@ -49,7 +49,7 @@ def export_meows(output: str | None, include_photos: bool, db_path: str | None) 
     photos = ctx.db.get_photos() if include_photos else []
     ctx.db.close()
 
-    out_path = Path(output) if output else Path(f"meowdb-export-{date.today()}.zip")
+    out_path = Path(output) if output else DATA_DIR / f"meowdb-export-{date.today()}.zip"
 
     exported_meows = 0
     skipped_meows = 0
