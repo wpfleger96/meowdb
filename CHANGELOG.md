@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.3](https://github.com/wpfleger96/MeowDB/compare/v0.5.2...v0.5.3) (2026-06-27)
+
+
+### Bug Fixes
+
+* **docker:** install git for pydub git dependency in slim image ([#63](https://github.com/wpfleger96/MeowDB/issues/63)) ([a0ea10e](https://github.com/wpfleger96/MeowDB/commit/a0ea10ec2f656a7157e7f14dcab07300a2a642f4))
+
+## [0.5.2](https://github.com/wpfleger96/MeowDB/compare/v0.5.1...v0.5.2) (2026-06-27)
+
+
+### Bug Fixes
+
+* **deps:** pin pydub to GitHub master; default export path to DATA_DIR ([#61](https://github.com/wpfleger96/MeowDB/issues/61)) ([94aa557](https://github.com/wpfleger96/MeowDB/commit/94aa557222d741cdbbb8a9fad25270a6fcff3471))
+
+## [0.5.1](https://github.com/wpfleger96/MeowDB/compare/v0.5.0...v0.5.1) (2026-06-27)
+
+
+### Bug Fixes
+
+* **cli:** show truncation hint in list output; pin Dockerfile to Python 3.13 ([#59](https://github.com/wpfleger96/MeowDB/issues/59)) ([d672077](https://github.com/wpfleger96/MeowDB/commit/d672077f1c98f32476ba284da126c93ec06c19a2))
+
 ## [0.5.0](https://github.com/wpfleger96/MeowDB/compare/v0.4.0...v0.5.0) (2026-06-27)
 
 
