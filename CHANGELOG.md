@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/wpfleger96/MeowDB/compare/v0.5.2...v0.5.3) (2026-06-27)
+
+
+### Bug Fixes
+
+* **docker:** install git for pydub git dependency in slim image ([#63](https://github.com/wpfleger96/MeowDB/issues/63)) ([a0ea10e](https://github.com/wpfleger96/MeowDB/commit/a0ea10ec2f656a7157e7f14dcab07300a2a642f4))
+
 ## [0.5.2](https://github.com/wpfleger96/MeowDB/compare/v0.5.1...v0.5.2) (2026-06-27)
 
 
