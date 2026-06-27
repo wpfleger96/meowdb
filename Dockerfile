@@ -1,7 +1,7 @@
 FROM ghcr.io/astral-sh/uv:0.7 AS uv
 FROM python:3.13-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=uv /uv /usr/local/bin/uv
 
