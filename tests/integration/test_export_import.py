@@ -542,7 +542,6 @@ def test_import_photos_warns_when_archive_has_no_photos(
 
     # Build a meow-only archive (no photos key in manifest)
     archive = tmp_path / "meows_only.zip"
-    meow_id = str(uuid.uuid4())
     manifest = {
         "format_version": 1,
         "meow_count": 0,
