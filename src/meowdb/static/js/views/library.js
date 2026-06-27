@@ -314,8 +314,8 @@ function libraryView() {
 
     uniquenessBadgeClass(score) {
       if (score == null) return 'badge-default';
-      if (score >= 75) return 'badge-green';
-      if (score >= 50) return 'badge-yellow';
+      if (score >= 67) return 'badge-green';
+      if (score >= 33) return 'badge-yellow';
       return 'badge-red';
     },
   };

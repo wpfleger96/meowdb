@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 class SegmentationConfig(BaseModel):
     cat_band_low_hz: float = 250.0
-    cat_band_high_hz: float = 5000.0
+    cat_band_high_hz: float = 8000.0
     silence_threshold_dbfs: float = -40.0
     min_silence_ms: int = 150
     min_segment_ms: int = 80
