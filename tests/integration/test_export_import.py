@@ -361,3 +361,198 @@ def test_round_trip(
     assert meow["upvote_count"] == 1
     assert (dst_wav_dir / f"{meow_id}.wav").exists()
     assert (dst_mp3_dir / f"{meow_id}.mp3").exists()
+
+
+# ---------------------------------------------------------------------------
+# Photo export / import tests
+# ---------------------------------------------------------------------------
+
+def _make_webp(path: Path) -> None:
+    """Write a minimal valid WebP file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Minimal 1x1 white WebP (lossy, 26 bytes)
+    path.write_bytes(
+        b"RIFF\x1a\x00\x00\x00WEBPVP8 \x0e\x00\x00\x00\x30\x01\x00\x9d"
+        b"\x01\x2a\x01\x00\x01\x00\x02\x00\x34\x25\x9f"
+    )
+
+
+def _insert_photo(db: MeowDB, photos_dir: Path) -> str:
+    photo_id = str(uuid.uuid4())
+    filename = f"{photo_id}.webp"
+    _make_webp(photos_dir / filename)
+    db.import_photo(photo_id, filename, "2026-01-01T00:00:00", False, None)
+    return photo_id
+
+
+@pytest.mark.integration
+def test_export_includes_photos(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: CliRunner,
+    db_path: Path,
+    tmp_path: Path,
+    silent_wav_bytes: bytes,
+) -> None:
+    photos_dir = tmp_path / "photos"
+    import meowdb.cli.commands.export_cmd as export_mod
+
+    monkeypatch.setattr(export_mod, "PHOTOS_DIR", photos_dir)
+
+    db = MeowDB(db_path)
+    photo_id = _insert_photo(db, photos_dir)
+    db.close()
+
+    out = tmp_path / "out.zip"
+    result = runner.invoke(main, ["export", str(out), "--include-photos", "--db-path", str(db_path)])
+    assert result.exit_code == 0, result.output
+
+    with zipfile.ZipFile(out) as zf:
+        manifest = json.loads(zf.read(_MANIFEST_PATH))
+        names = zf.namelist()
+
+    assert "photos" in manifest
+    assert len(manifest["photos"]) == 1
+    assert manifest["photos"][0]["id"] == photo_id
+    assert f"meowdb-export/photos/{photo_id}.webp" in names
+
+
+@pytest.mark.integration
+def test_export_without_flag_omits_photos(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: CliRunner,
+    db_path: Path,
+    tmp_path: Path,
+) -> None:
+    photos_dir = tmp_path / "photos"
+    import meowdb.cli.commands.export_cmd as export_mod
+
+    monkeypatch.setattr(export_mod, "PHOTOS_DIR", photos_dir)
+
+    db = MeowDB(db_path)
+    _insert_photo(db, photos_dir)
+    db.close()
+
+    out = tmp_path / "out.zip"
+    runner.invoke(main, ["export", str(out), "--db-path", str(db_path)])
+
+    with zipfile.ZipFile(out) as zf:
+        manifest = json.loads(zf.read(_MANIFEST_PATH))
+        names = zf.namelist()
+
+    assert "photos" not in manifest
+    assert not any(n.startswith("meowdb-export/photos/") for n in names)
+
+
+@pytest.mark.integration
+def test_import_photos_round_trip(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: CliRunner,
+    tmp_path: Path,
+    silent_wav_bytes: bytes,
+) -> None:
+    src_db_path = tmp_path / "src.sqlite"
+    dst_db_path = tmp_path / "dst.sqlite"
+    src_photos_dir = tmp_path / "src_photos"
+    dst_photos_dir = tmp_path / "dst_photos"
+
+    import meowdb.cli.commands.export_cmd as export_mod
+    import meowdb.cli.commands.import_cmd as import_mod
+
+    monkeypatch.setattr(export_mod, "PHOTOS_DIR", src_photos_dir)
+    monkeypatch.setattr(import_mod, "PHOTOS_DIR", dst_photos_dir)
+    monkeypatch.setattr(import_mod, "WAV_DIR", tmp_path / "wav")
+    monkeypatch.setattr(import_mod, "MP3_DIR", tmp_path / "mp3")
+
+    src_db = MeowDB(src_db_path)
+    photo_id = _insert_photo(src_db, src_photos_dir)
+    src_db.close()
+
+    archive = tmp_path / "export.zip"
+    result = runner.invoke(
+        main, ["export", str(archive), "--include-photos", "--db-path", str(src_db_path)]
+    )
+    assert result.exit_code == 0, result.output
+
+    result = runner.invoke(
+        main, ["import", str(archive), "--include-photos", "--db-path", str(dst_db_path)]
+    )
+    assert result.exit_code == 0, result.output
+
+    dst_db = MeowDB(dst_db_path)
+    photo = dst_db.get_photo(photo_id)
+    dst_db.close()
+
+    assert photo is not None
+    assert photo["id"] == photo_id
+    assert (dst_photos_dir / f"{photo_id}.webp").exists()
+
+
+@pytest.mark.integration
+def test_import_photos_skip_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: CliRunner,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "test.sqlite"
+    photos_dir = tmp_path / "photos"
+
+    import meowdb.cli.commands.export_cmd as export_mod
+    import meowdb.cli.commands.import_cmd as import_mod
+
+    monkeypatch.setattr(export_mod, "PHOTOS_DIR", photos_dir)
+    monkeypatch.setattr(import_mod, "PHOTOS_DIR", photos_dir)
+    monkeypatch.setattr(import_mod, "WAV_DIR", tmp_path / "wav")
+    monkeypatch.setattr(import_mod, "MP3_DIR", tmp_path / "mp3")
+
+    db = MeowDB(db_path)
+    photo_id = _insert_photo(db, photos_dir)
+    db.close()
+
+    # Export then re-import with skip (default)
+    archive = tmp_path / "export.zip"
+    runner.invoke(main, ["export", str(archive), "--include-photos", "--db-path", str(db_path)])
+    result = runner.invoke(
+        main,
+        ["import", str(archive), "--include-photos", "--on-conflict", "skip", "--db-path", str(db_path)],
+    )
+    assert result.exit_code == 0
+
+    # Should still be exactly one photo
+    db = MeowDB(db_path)
+    photos = db.get_photos()
+    db.close()
+    assert len(photos) == 1
+    assert photos[0]["id"] == photo_id
+
+
+@pytest.mark.integration
+def test_import_photos_warns_when_archive_has_no_photos(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: CliRunner,
+    db_path: Path,
+    tmp_path: Path,
+    silent_wav_bytes: bytes,
+) -> None:
+    """--include-photos on an archive that was exported without photos warns gracefully."""
+    import meowdb.cli.commands.import_cmd as import_mod
+
+    monkeypatch.setattr(import_mod, "WAV_DIR", tmp_path / "wav")
+    monkeypatch.setattr(import_mod, "MP3_DIR", tmp_path / "mp3")
+    monkeypatch.setattr(import_mod, "PHOTOS_DIR", tmp_path / "photos")
+
+    # Build a meow-only archive (no photos key in manifest)
+    archive = tmp_path / "meows_only.zip"
+    meow_id = str(uuid.uuid4())
+    manifest = {
+        "format_version": 1,
+        "meow_count": 0,
+        "meows": [],
+    }
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr(_MANIFEST_PATH, json.dumps(manifest))
+
+    result = runner.invoke(
+        main, ["import", str(archive), "--include-photos", "--db-path", str(db_path)]
+    )
+    assert result.exit_code == 0
+    assert "does not contain photos" in result.output

@@ -596,6 +596,15 @@ class MeowDB:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def import_photo(self, photo_id: str, filename: str, created_at: str | None, is_default: bool, updated_at: str | None) -> None:
+        """Insert a fully-formed photo row from an import archive."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO cat_photos (id, filename, created_at, is_default, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (photo_id, filename, created_at, is_default, updated_at),
+            )
+            self._conn.commit()
+
     def get_random_photo(self, exclude_id: str | None = None) -> dict | None:  # type: ignore[type-arg]
         with self._lock:
             if exclude_id:
