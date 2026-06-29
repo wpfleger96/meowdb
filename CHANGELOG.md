@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/wpfleger96/MeowDB/compare/v0.6.0...v0.7.0) (2026-06-29)
+
+
+### Features
+
+* add Replay button to re-play the last meow ([#66](https://github.com/wpfleger96/MeowDB/issues/66)) ([f948528](https://github.com/wpfleger96/MeowDB/commit/f94852855ee7f65c8613fb4b4b0cfd852be77bf6))
+
 ## [0.6.0](https://github.com/wpfleger96/MeowDB/compare/v0.5.3...v0.6.0) (2026-06-27)
 
 
