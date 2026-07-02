@@ -55,12 +55,16 @@ def _job_to_response(job: dict) -> IngestJobResponse:  # type: ignore[type-arg]
     )
 
 
-def _resolve_source(job_id: str) -> Path:
-    """Locate the source audio file for an ingest job, with path-traversal guard."""
-    candidate = (STAGING_DIR / job_id).resolve()
-    if not str(candidate).startswith(str(STAGING_DIR.resolve())):
-        raise HTTPException(status_code=403, detail="Access denied")
-    source_files = list(candidate.glob("source.*"))
+def _resolve_staging_path(job_id: str, prefer_audio: bool = False) -> Path:
+    try:
+        job_dir = safe_path(STAGING_DIR / job_id, STAGING_DIR)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied") from None
+    if prefer_audio:
+        audio_path = job_dir / "source_audio.wav"
+        if audio_path.exists():
+            return audio_path
+    source_files = list(job_dir.glob("source.*"))
     if not source_files:
         raise HTTPException(status_code=404, detail="Source file not found")
     return source_files[0]
@@ -243,20 +247,6 @@ _SOURCE_MEDIA_TYPES = {
 }
 
 
-def _resolve_source_audio(job_id: str) -> Path:
-    """Return source_audio.wav for video uploads, original source file for audio uploads."""
-    candidate = (STAGING_DIR / job_id).resolve()
-    if not str(candidate).startswith(str(STAGING_DIR.resolve())):
-        raise HTTPException(status_code=403, detail="Access denied")
-    audio_path = candidate / "source_audio.wav"
-    if audio_path.exists():
-        return audio_path
-    source_files = list(candidate.glob("source.*"))
-    if not source_files:
-        raise HTTPException(status_code=404, detail="Source file not found")
-    return source_files[0]
-
-
 @router.get("/ingest/{job_id}/source")
 async def stream_source_audio(job_id: str, request: Request) -> StreamingResponse:
     db = request.app.state.db
@@ -264,7 +254,7 @@ async def stream_source_audio(job_id: str, request: Request) -> StreamingRespons
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    source_path = _resolve_source_audio(job_id)
+    source_path = _resolve_staging_path(job_id, prefer_audio=True)
     media_type = _SOURCE_MEDIA_TYPES.get(source_path.suffix.lower(), "application/octet-stream")
     return stream_file(source_path, request, media_type)
 
@@ -278,7 +268,7 @@ async def detect_regions(job_id: str, request: Request) -> DetectResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    source_path = _resolve_source(job_id)
+    source_path = _resolve_staging_path(job_id)
     result = await run_in_threadpool(MeowProcessor().detect_only, source_path)
     return DetectResponse(regions=[DetectRegion(start_ms=s, end_ms=e) for s, e in result])
 
@@ -295,7 +285,7 @@ async def clip_and_commit(job_id: str, body: ClipRequest, request: Request) -> C
     if not body.regions:
         raise HTTPException(status_code=400, detail="At least one region is required")
 
-    source_path = _resolve_source(job_id)
+    source_path = _resolve_staging_path(job_id)
     try:
         mtime = os.path.getmtime(str(source_path))
         recorded_at: str | None = datetime.fromtimestamp(mtime).isoformat()

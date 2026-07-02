@@ -528,6 +528,15 @@ def test_stream_source_audio(client):
 
 
 @pytest.mark.integration
+def test_ingest_source_traversal_job_id_denied(client):
+    with patch.object(
+        client.app.state.db, "get_job", return_value={"id": "..", "status": "uploaded"}
+    ):
+        resp = client.get("/api/ingest/%2e%2e/source")
+    assert resp.status_code == 403
+
+
+@pytest.mark.integration
 def test_detect_regions(client):
     wav_bytes = _make_silent_wav_bytes()
     resp = client.post(
