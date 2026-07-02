@@ -198,12 +198,12 @@
 }
 
 .badge-green {
-  background: rgba(74, 222, 128, 0.15);
+  background: var(--green-glow);
   color: var(--green);
 }
 
 .badge-red {
-  background: rgba(248, 113, 113, 0.15);
+  background: var(--red-glow);
   color: var(--red);
 }
 
@@ -320,6 +320,14 @@
 }
 
 /* Confirm dialog (centered modal) */
+.modal-confirm-overlay {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+}
+
 .modal-confirm .modal-sheet {
   max-width: 340px;
   margin: auto;
@@ -332,6 +340,18 @@
   from { transform: scale(0.9); opacity: 0; }
   to   { transform: scale(1); opacity: 1; }
 }
+
+.modal-confirm-card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  padding: var(--sp-6);
+  width: 100%;
+  max-width: 340px;
+}
+
+.modal-confirm-card .modal-title { margin-bottom: var(--sp-3); }
+.modal-confirm-card .text-secondary { margin-bottom: var(--sp-5); }
+.modal-confirm-card .flex .btn { flex: 1; }
 
 /* ============================================================
    Toast notifications
