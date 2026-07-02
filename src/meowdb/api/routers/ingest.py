@@ -13,10 +13,10 @@ from starlette.concurrency import run_in_threadpool
 
 from meowdb.api.auth import require_auth
 from meowdb.api.models import (
+    ClipRegion,
     ClipRequest,
     CommitRequest,
     CommitResponse,
-    DetectRegion,
     DetectResponse,
     IngestJobResponse,
     IngestSegmentResponse,
@@ -264,7 +264,7 @@ async def detect_regions(job_id: str, request: Request) -> DetectResponse:
 
     source_path = _resolve_staging_path(job_id)
     result = await run_in_threadpool(MeowProcessor().detect_only, source_path)
-    return DetectResponse(regions=[DetectRegion(start_ms=s, end_ms=e) for s, e in result])
+    return DetectResponse(regions=[ClipRegion(start_ms=s, end_ms=e) for s, e in result])
 
 
 @router.post("/ingest/{job_id}/clip", response_model=CommitResponse)
