@@ -253,7 +253,7 @@ function libraryView() {
       if (!this.detailMeow) return;
       if (this.authRequired && !this.authenticated) { this.showLoginModal = true; return; }
       try {
-        await updateLabels(this.detailMeow.id, this.detailMeow.labels);
+        await updateMeow(this.detailMeow.id, { labels: this.detailMeow.labels });
         // Update the row in the list too
         const idx = this.meows.findIndex((m) => m.id === this.detailMeow.id);
         if (idx !== -1) {

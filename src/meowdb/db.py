@@ -131,10 +131,6 @@ class MeowDB:
                 d[field] = json.loads(d[field])
         return d
 
-    # -------------------------------------------------------------------------
-    # Meow CRUD
-    # -------------------------------------------------------------------------
-
     def add(self, metadata: dict) -> str:  # type: ignore[type-arg]
         meow_id = str(uuid.uuid4())
         with self._lock:
@@ -163,13 +159,11 @@ class MeowDB:
         return meow_id
 
     def get_all_for_export(self) -> list[dict]:  # type: ignore[type-arg]
-        """Return all meows with no limit, for export."""
         with self._lock:
             rows = self._conn.execute("SELECT * FROM meows ORDER BY created_at ASC").fetchall()
         return [self._row_to_dict(r) for r in rows]
 
     def import_meow(self, meow_id: str, meow: dict, wav_path: str, mp3_path: str) -> None:  # type: ignore[type-arg]
-        """Insert a fully-formed meow row from an import archive."""
         with self._lock:
             self._conn.execute(
                 """
@@ -330,10 +324,6 @@ class MeowDB:
                 (wav_path, mp3_path, meow_id),
             )
             self._conn.commit()
-
-    # -------------------------------------------------------------------------
-    # Job staging
-    # -------------------------------------------------------------------------
 
     def create_job(self, source_filename: str) -> str:
         job_id = str(uuid.uuid4())
@@ -499,10 +489,6 @@ class MeowDB:
             self._conn.execute("DELETE FROM ingest_jobs WHERE id = ?", (job_id,))
             self._conn.commit()
 
-    # -------------------------------------------------------------------------
-    # Stats
-    # -------------------------------------------------------------------------
-
     def _count_labels(self) -> dict[str, int]:
         with self._lock:
             rows = self._conn.execute("SELECT labels FROM meows").fetchall()
@@ -572,10 +558,6 @@ class MeowDB:
         counts = self._count_labels()
         return [{"label": lbl, "count": cnt} for lbl, cnt in sorted(counts.items())]
 
-    # -------------------------------------------------------------------------
-    # Cat photos
-    # -------------------------------------------------------------------------
-
     def add_photo(
         self, filename: str, photo_id: str | None = None, is_default: bool = False
     ) -> str:
@@ -604,7 +586,6 @@ class MeowDB:
         is_default: bool,
         updated_at: str | None,
     ) -> None:
-        """Insert a fully-formed photo row from an import archive."""
         with self._lock:
             self._conn.execute(
                 "INSERT INTO cat_photos (id, filename, created_at, is_default, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -657,10 +638,6 @@ class MeowDB:
             cursor = self._conn.execute("DELETE FROM cat_photos WHERE id = ?", (photo_id,))
             self._conn.commit()
         return cursor.rowcount > 0
-
-    # -------------------------------------------------------------------------
-    # Meow fingerprints and uniqueness scores
-    # -------------------------------------------------------------------------
 
     def update_fingerprint(self, meow_id: str, fingerprint: list[float]) -> None:
         with self._lock:

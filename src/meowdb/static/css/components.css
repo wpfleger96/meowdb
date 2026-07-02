@@ -82,12 +82,6 @@
   opacity: 0.85;
 }
 
-/* Success (accept) */
-.btn-success {
-  background: var(--green);
-  color: #000;
-}
-
 /* Icon button */
 .btn-icon {
   width: 44px;
@@ -109,35 +103,9 @@
   height: 20px;
 }
 
-/* Large icon button (play/record) */
-.btn-icon-lg {
-  width: 56px;
-  height: 56px;
-}
-
-.btn-icon-lg svg {
-  width: 28px;
-  height: 28px;
-}
-
 /* Full width */
 .btn-full {
   width: 100%;
-}
-
-/* ============================================================
-   Card
-   ============================================================ */
-
-.card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.card-padded {
-  padding: var(--sp-4);
 }
 
 /* ============================================================
@@ -487,11 +455,6 @@
   color: var(--text-primary);
 }
 
-.stat-tile-sub {
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-}
-
 /* ============================================================
    Empty state
    ============================================================ */
@@ -531,19 +494,6 @@
   height: 1px;
   background: var(--border);
   margin: var(--sp-4) 0;
-}
-
-/* ============================================================
-   Section header
-   ============================================================ */
-
-.section-header {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: var(--sp-4) var(--sp-4) var(--sp-2);
 }
 
 /* ============================================================

@@ -183,9 +183,5 @@ function playView() {
         });
     },
 
-    /** Navigate to the upload view */
-    goToUpload() {
-      navigateTo('/upload');
-    },
   };
 }

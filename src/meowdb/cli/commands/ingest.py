@@ -116,7 +116,7 @@ def _ingest_file(
     segments = job["segments"]
 
     if review:
-        accepted_ids, rejected_ids = _review_loop(segments, result)
+        accepted_ids, rejected_ids = _review_loop(segments)
     else:
         accepted_ids = [s["id"] for s in segments]
         rejected_ids = []
@@ -165,7 +165,6 @@ def _dry_run_file(path: Path, segment: bool | None, ctx: Context) -> None:
 
 def _review_loop(
     segments: list[dict],  # type: ignore[type-arg]
-    result: object,
 ) -> tuple[list[str], list[str]]:
     accepted: list[str] = []
     rejected: list[str] = []
