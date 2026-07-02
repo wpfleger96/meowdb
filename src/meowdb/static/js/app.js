@@ -12,6 +12,7 @@ const ROUTES = {
   '/photos':  'photos',
   '/upload':  'ingest',
   '/stats':   'stats',
+  '/algorithm': 'algorithm',
 };
 
 function pathToView(path) {
@@ -168,4 +169,5 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('photosView', photosView);
   Alpine.data('ingestView', ingestView);
   Alpine.data('statsView', statsView);
+  Alpine.data('algorithmView', algorithmView);
 });

@@ -32,6 +32,11 @@
   <script src="/static/js/views/ingest.js" defer></script>
   <script src="/static/js/views/stats.js" defer></script>
   <script src="/static/js/views/photos.js" defer></script>
+  <!-- Algorithm page: vendored markdown + math renderers (no build step) -->
+  <script>window.MathJax = { startup: { typeset: false }, options: { enableMenu: false } };</script>
+  <script src="/static/vendor/tex-svg.js" defer></script>
+  <script src="/static/vendor/markdown-it.min.js" defer></script>
+  <script src="/static/js/views/algorithm.js" defer></script>
   <script src="/static/js/app.js" defer></script>
   <!-- Alpine.js LAST — auto-starts on load, so all components must be defined first -->
   <script src="/static/vendor/alpine.min.js" defer></script>
@@ -930,6 +935,14 @@
               </div>
             </div>
 
+            <!-- Link to the scoring-algorithm write-up -->
+            <button class="algorithm-link" @click="goTo('/algorithm')">
+              <span>How uniqueness scores are calculated</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </button>
+
             <!-- Most played leaderboard -->
             <div class="stats-section" x-show="stats.most_played && stats.most_played.length > 0">
               <div class="stats-section-header">Most played</div>
@@ -1013,6 +1026,55 @@
           <div class="empty-state-body" x-text="error"></div>
           <button class="btn btn-primary" @click="load()">Retry</button>
         </div>
+
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         View: Algorithm (renders docs/algorithm.md)
+    ══════════════════════════════════════════════════ -->
+    <div
+      class="view-container"
+      x-show="isView('algorithm')"
+      x-data="algorithmView()"
+      x-init="init()"
+    >
+      <div class="algorithm-view">
+
+        <div class="view-header" style="position:static;border-bottom:none;padding-bottom:0;">
+          <h1 class="view-title">Algorithm</h1>
+          <!-- mobile auth control — keep all copies identical -->
+          <div class="nav-auth-mobile" x-show="authRequired" x-cloak>
+            <button x-show="authenticated" @click="doLogout()" class="btn btn-ghost btn-sm">Logout</button>
+            <button x-show="!authenticated" @click="showLoginModal = true" class="btn btn-ghost btn-sm">Login</button>
+          </div>
+        </div>
+
+        <p class="algorithm-intro">
+          <strong>How uniqueness scores are computed.</strong>
+          Every meow in your library is distilled into a 120-number acoustic fingerprint,
+          then compared against every other meow to measure how distinctive it sounds.
+          Below is the full technical write-up of that pipeline — from the raw waveform
+          through the spectral features to the final 0–100 percentile score.
+          Skim the headings; the equations are there for the curious.
+        </p>
+
+        <!-- Loading -->
+        <div class="upload-progress" x-show="isLoading">
+          <div class="spinner spinner-lg"></div>
+        </div>
+
+        <!-- Error state -->
+        <div class="empty-state" x-show="!isLoading && error" x-cloak>
+          <div class="empty-state-icon">⚠️</div>
+          <div class="empty-state-title">Failed to load</div>
+          <div class="empty-state-body" x-text="error"></div>
+          <button class="btn btn-primary" @click="load()">Retry</button>
+        </div>
+
+        <!-- Rendered document -->
+        <div class="markdown-body" x-ref="body" x-show="!isLoading && !error"></div>
 
       </div>
     </div>
@@ -1108,6 +1170,20 @@
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
         <span class="nav-tab-label">Stats</span>
+      </button>
+
+      <!-- Algorithm tab -->
+      <button
+        :class="navClass('algorithm')"
+        @click="goTo('/algorithm')"
+        aria-label="Algorithm"
+        :aria-current="isView('algorithm') ? 'page' : null"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M4 17l6-6-6-6"/>
+          <line x1="12" y1="19" x2="20" y2="19"/>
+        </svg>
+        <span class="nav-tab-label">Algorithm</span>
       </button>
 
     </nav>
