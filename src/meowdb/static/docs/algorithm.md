@@ -42,11 +42,11 @@ The mel energy for frame $i$ and filter $m$ is:
 
 $$E_i[m] = \sum_k H_m[k] \cdot P_i[k]$$
 
-**Parameter rationale:** Cat fundamental frequency (F0) ranges from ~208 to ~1185 Hz (Sedova et al., 2025). Setting `fmin = 250 Hz` excludes purring (F0 ≈ 25–30 Hz) and environmental rumble. Setting `fmax = 8000 Hz` captures harmonics 5–8 of high-pitched meows. `n_mels = 40` provides more spectral resolution than the speech-recognition default of 26.
+**Parameter rationale:** Cat fundamental frequency (F0) ranges from ~208 to ~1185 Hz [1]. Setting `fmin = 250 Hz` excludes purring (F0 ≈ 25–30 Hz) and environmental rumble. Setting `fmax = 8000 Hz` captures harmonics 5–8 of high-pitched meows. `n_mels = 40` provides more spectral resolution than the speech-recognition default of 26.
 
 ### 1.3 Per-Channel Energy Normalization (PCEN)
 
-Rather than taking log-mel energies, we apply PCEN (Lostanlen et al., 2019), which adapts to local noise levels and compresses the dynamic range more robustly than a fixed log transform.
+Rather than taking log-mel energies, we apply PCEN [2], which adapts to local noise levels and compresses the dynamic range more robustly than a fixed log transform.
 
 **Step 1 — IIR smoother** (per-channel, causal):
 
@@ -58,13 +58,13 @@ The smoother tracks the local background energy envelope with time constant $1/s
 
 $$\text{PCEN}_i[m] = \left(\frac{E_i[m]}{(\varepsilon + M_i[m])^\alpha} + \delta\right)^r - \delta^r$$
 
-Parameters from Lostanlen et al. 2019: $s = 0.025$, $\alpha = 0.98$, $\delta = 2.0$, $r = 0.5$, $\varepsilon = 10^{-6}$.
+Parameters from [2]: $s = 0.025$, $\alpha = 0.98$, $\delta = 2.0$, $r = 0.5$, $\varepsilon = 10^{-6}$.
 
 PCEN has two advantages over log-mel for bioacoustic detection: (1) the adaptive denominator suppresses stationary background noise without a fixed noise floor assumption, and (2) the power-law compression $(\cdot)^r$ normalizes across loudness levels.
 
 ### 1.4 DCT and MFCC Extraction
 
-The Mel-Frequency Cepstral Coefficients decorrelate the mel energies via a Type-II DCT with orthonormal normalization:
+The Mel-Frequency Cepstral Coefficients [3] decorrelate the mel energies via a Type-II DCT with orthonormal normalization:
 
 $$c_i[n] = \sqrt{\frac{2}{M}} \sum_{m=0}^{M-1} \text{PCEN}_i[m] \cdot \cos\!\left(\frac{\pi n (m + 0.5)}{M}\right)$$
 
@@ -166,10 +166,10 @@ This guarantees that scores use the full [0, 100] range regardless of the actual
 | `fmax` | 8,000 Hz | Captures harmonics 5–8 of high-pitched meows |
 | `n_mels` | 40 | More resolution than speech default (26); sub-YAMNet (64) |
 | `n_mfcc` | 20 | More resolution than speech default (13) |
-| PCEN `s` | 0.025 | Smoother time constant; from Lostanlen et al. 2019 |
-| PCEN `α` | 0.98 | Gain normalization strength; from Lostanlen et al. 2019 |
-| PCEN `δ` | 2.0 | Bias term for dynamic range compression; from Lostanlen et al. 2019 |
-| PCEN `r` | 0.5 | Root compression exponent; from Lostanlen et al. 2019 |
+| PCEN `s` | 0.025 | Smoother time constant; from [2] |
+| PCEN `α` | 0.98 | Gain normalization strength; from [2] |
+| PCEN `δ` | 2.0 | Bias term for dynamic range compression; from [2] |
+| PCEN `r` | 0.5 | Root compression exponent; from [2] |
 | PCEN `ε` | 1e-6 | Numerical floor; prevents divide-by-zero |
 | `k_neighbors` | 3 | k-NN averaging window; balances robustness vs. locality |
 
@@ -191,6 +191,6 @@ This guarantees that scores use the full [0, 100] range regardless of the actual
 
 ## References
 
-- Sedova et al. (2025). "Individual identification of domestic cats using vocal parameters of meow and purr." *Scientific Reports*, 15. — Cat F0 range, meow individuality statistics.
-- Lostanlen et al. (2019). "Per-Channel Energy Normalization: Why and How." *IEEE Signal Processing Letters*, 26(1). — PCEN formula and parameter values.
-- Davis & Mermelstein (1980). "Comparison of parametric representations for monosyllabic word recognition in continuously spoken sentences." *IEEE Transactions on ASSP*, 28(4). — Original MFCC derivation.
+1. Sedova et al. (2025). "Individual identification of domestic cats using vocal parameters of meow and purr." *Scientific Reports*, 15. — Cat F0 range, meow individuality statistics.
+2. Lostanlen et al. (2019). "Per-Channel Energy Normalization: Why and How." *IEEE Signal Processing Letters*, 26(1). — PCEN formula and parameter values.
+3. Davis & Mermelstein (1980). "Comparison of parametric representations for monosyllabic word recognition in continuously spoken sentences." *IEEE Transactions on ASSP*, 28(4). — Original MFCC derivation.

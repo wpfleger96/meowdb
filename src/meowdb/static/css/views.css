@@ -1109,6 +1109,11 @@
   margin: var(--sp-3) 0;
   padding-left: var(--sp-6);
 }
+
+/* Restore list markers stripped by the base.css reset */
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
+.markdown-body li::marker { color: var(--text-muted); }
 .markdown-body li { margin: var(--sp-1) 0; }
 
 .markdown-body strong { color: var(--text-primary); font-weight: 700; }
