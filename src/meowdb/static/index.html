@@ -935,14 +935,6 @@
               </div>
             </div>
 
-            <!-- Link to the scoring-algorithm write-up -->
-            <button class="algorithm-link" @click="goTo('/algorithm')">
-              <span>How uniqueness scores are calculated</span>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-              </svg>
-            </button>
-
             <!-- Most played leaderboard -->
             <div class="stats-section" x-show="stats.most_played && stats.most_played.length > 0">
               <div class="stats-section-header">Most played</div>
@@ -1015,6 +1007,11 @@
               <div class="empty-state-title">No data yet</div>
               <div class="empty-state-body">Add some meows to see your stats</div>
             </div>
+
+            <!-- Footer link to the scoring-algorithm write-up -->
+            <button class="algorithm-link" @click="goTo('/algorithm')">
+              How are uniqueness scores calculated?
+            </button>
 
           </div>
         </template>

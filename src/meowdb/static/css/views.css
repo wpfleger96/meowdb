@@ -1049,32 +1049,23 @@
   color: var(--text-primary);
 }
 
-/* Link from the Stats view to the algorithm write-up */
+/* Footer link from the Stats view to the algorithm write-up */
 .algorithm-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  width: 100%;
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  font-size: var(--text-md);
-  font-weight: 600;
+  align-self: center;
+  background: none;
+  border: none;
+  padding: var(--sp-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border-strong);
+  transition: color 0.15s ease;
 }
 
 .algorithm-link:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-surface);
-}
-
-.algorithm-link svg {
   color: var(--accent);
-  flex-shrink: 0;
 }
 
 /* ── Rendered markdown document ── */
