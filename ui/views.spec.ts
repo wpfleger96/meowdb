@@ -106,6 +106,16 @@ test.describe('MeowDB views', () => {
     await screenshot(page, testInfo, '04b-ingest-waveform.png');
   });
 
+  test('algorithm doc', async ({ page }, testInfo) => {
+    await page.goto('/algorithm', GOTO_OPTS);
+    // Markdown rendered (headings from the doc) and math typeset by MathJax (SVG).
+    await page.waitForSelector('.markdown-body h1', { state: 'visible' });
+    await page.waitForSelector('.markdown-body mjx-container svg', { state: 'visible' });
+    // The Parameters markdown table rendered.
+    await expect(page.locator('.markdown-body table')).toHaveCount(1);
+    await screenshot(page, testInfo, '06-algorithm.png');
+  });
+
   test('stats dashboard', async ({ page }, testInfo) => {
     await page.goto('/stats', GOTO_OPTS);
     await page.waitForSelector('.stat-tile', { state: 'visible' });
