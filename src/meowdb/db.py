@@ -199,21 +199,26 @@ class MeowDB:
             )
             self._conn.commit()
 
-    def get_random(self, exclude_id: str | None = None) -> dict | None:  # type: ignore[type-arg]
+    def _random_row(self, table: str, exclude_id: str | None) -> sqlite3.Row | None:
         with self._lock:
             if exclude_id:
                 row = self._conn.execute(
-                    "SELECT * FROM meows WHERE id != ? ORDER BY RANDOM() LIMIT 1", (exclude_id,)
+                    f"SELECT * FROM {table} WHERE id != ? ORDER BY RANDOM() LIMIT 1",
+                    (exclude_id,),
                 ).fetchone()
                 if row is None:
                     row = self._conn.execute(
-                        "SELECT * FROM meows ORDER BY RANDOM() LIMIT 1"
+                        f"SELECT * FROM {table} ORDER BY RANDOM() LIMIT 1"
                     ).fetchone()
             else:
-                row = self._conn.execute("SELECT * FROM meows ORDER BY RANDOM() LIMIT 1").fetchone()
-            if row is None:
-                return None
-            return self._row_to_dict(row)
+                row = self._conn.execute(
+                    f"SELECT * FROM {table} ORDER BY RANDOM() LIMIT 1"
+                ).fetchone()
+        return row  # type: ignore[no-any-return]
+
+    def get_random(self, exclude_id: str | None = None) -> dict | None:  # type: ignore[type-arg]
+        row = self._random_row("meows", exclude_id)
+        return self._row_to_dict(row) if row else None
 
     def get_all(
         self,
@@ -594,20 +599,7 @@ class MeowDB:
             self._conn.commit()
 
     def get_random_photo(self, exclude_id: str | None = None) -> dict | None:  # type: ignore[type-arg]
-        with self._lock:
-            if exclude_id:
-                row = self._conn.execute(
-                    "SELECT * FROM cat_photos WHERE id != ? ORDER BY RANDOM() LIMIT 1",
-                    (exclude_id,),
-                ).fetchone()
-                if row is None:
-                    row = self._conn.execute(
-                        "SELECT * FROM cat_photos ORDER BY RANDOM() LIMIT 1"
-                    ).fetchone()
-            else:
-                row = self._conn.execute(
-                    "SELECT * FROM cat_photos ORDER BY RANDOM() LIMIT 1"
-                ).fetchone()
+        row = self._random_row("cat_photos", exclude_id)
         return dict(row) if row else None
 
     def get_photo(self, photo_id: str) -> dict | None:  # type: ignore[type-arg]

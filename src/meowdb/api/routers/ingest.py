@@ -21,7 +21,7 @@ from meowdb.api.models import (
     IngestJobResponse,
     IngestSegmentResponse,
 )
-from meowdb.api.streaming import safe_path, stream_file
+from meowdb.api.streaming import safe_path, save_upload, stream_file
 from meowdb.config import ALLOWED_MEDIA_SUFFIXES, MP3_DIR, STAGING_DIR, VIDEO_SUFFIXES, WAV_DIR
 from meowdb.similarity import update_library_uniqueness
 
@@ -103,19 +103,13 @@ async def create_ingest_job(
     job_staging_dir.mkdir(parents=True, exist_ok=True)
 
     temp_path = job_staging_dir / f"source{suffix}"
-    total = 0
-    with temp_path.open("wb") as dest:
-        while True:
-            chunk = await file.read(65536)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > _MAX_UPLOAD_BYTES:
-                temp_path.unlink(missing_ok=True)
-                shutil.rmtree(job_staging_dir, ignore_errors=True)
-                db.delete_job(job_id)
-                raise HTTPException(status_code=413, detail="Upload exceeds 500 MB limit")
-            dest.write(chunk)
+    try:
+        await save_upload(file, temp_path, _MAX_UPLOAD_BYTES, "Upload exceeds 500 MB limit")
+    except HTTPException:
+        temp_path.unlink(missing_ok=True)
+        shutil.rmtree(job_staging_dir, ignore_errors=True)
+        db.delete_job(job_id)
+        raise
 
     db.update_job_status(job_id, "uploaded")
 
@@ -298,17 +292,7 @@ async def clip_and_commit(job_id: str, body: ClipRequest, request: Request) -> C
         MeowProcessor().process_clips, source_path, regions, staging_dir
     )
 
-    seg_dicts = [
-        {
-            "index": seg.index,
-            "duration_ms": seg.duration_ms,
-            "wav_path": str(seg.wav_path) if seg.wav_path else "",
-            "waveform_data": seg.waveform_data,
-            "peak_dbfs": seg.peak_dbfs,
-            "cat_energy_ratio": seg.cat_energy_ratio,
-        }
-        for seg in segments
-    ]
+    seg_dicts = [seg.to_db_dict() for seg in segments]
     db.add_segments(job_id, seg_dicts)
     segment_ids = db.get_segment_ids(job_id)
     meow_ids = db.commit_job(job_id, segment_ids, [], WAV_DIR, MP3_DIR, recorded_at=recorded_at)
